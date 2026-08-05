@@ -1,0 +1,15 @@
+# scouter progress is personal — it should not travel with the repo
+.scouter/progress
+.scouter/reviews
+
+# local scratch
+scratch/
+*.local
+.env
+.envrc
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

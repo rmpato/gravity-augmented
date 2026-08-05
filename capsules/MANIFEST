@@ -1,0 +1,41 @@
+# id	saga	points	title
+# Read by bin/scouter. Tab-separated. Do not add spaces around tabs.
+# Main arc: 25 regular capsules @ 340 + the capstone @ 500 = exactly 9000.
+# Filler Arc (B*): optional. 6 @ 150 = 900 bonus, which is how you get OVER 9000.
+00	0	0	Kame House — Setup, Tools & Your Own Repo
+01	0	340	Scouter — Your First Service
+02	0	340	Capsule #9 — Containers
+03	0	340	Bulma's Blueprints — Reproducible Environments & IaC
+04	0	340	Kami's Lookout — The GCP Mental Model
+05	1	340	Kaio-ken — Vertical Scaling and Its Price
+06	1	340	Multi-Form — Horizontal Scaling & Statelessness
+07	1	340	Korin's Tower — Load Balancing
+08	1	340	King Yemma's Desk — Proxies, Gateways & the Edge
+09	1	340	Hyperbolic Time Chamber — Load Testing & Capacity
+10	2	340	The Grand Elder's Archive — Relational Data
+11	2	340	Dragon Radar — Indexes & Query Plans
+12	2	340	Seven Dragon Balls — Sharding & Partitioning
+13	2	340	Namekian Fusion — Replication & Consistency
+14	3	340	Senzu Bean — Caching Fundamentals
+15	3	340	Ginyu Force Tactics — When Caches Betray You
+16	3	340	Instant Transmission — CDN & The Edge
+17	3	340	Ki Suppression — Rate Limiting, Timeouts & Backpressure
+18	4	340	King Kai's Telepathy — Pub/Sub
+19	4	340	Cell's Absorption — Delivery Semantics & Idempotency
+20	4	340	Spirit Bomb — Fan-in, Fan-out & Batch
+21	4	340	Trunks' Time Machine — Event-Driven Architecture
+22	5	340	Fusion Dance — Splitting the Monolith
+23	5	340	The Great Saiyaman — Backend for Frontend
+24	5	340	Ginyu's Body Change — Safe Deployments
+25	5	340	Scouter Mk. II — Observability & SLOs
+26	5	500	Tournament of Power — The Capstone
+B1	6	150	Kame House Rules — REST API Design Essentials
+B2	6	150	Snake Way — HTTP & Networking Essentials
+B3	6	150	Fortuneteller Baba — Identity, Auth & Access
+B4	6	150	Ancient Namekian — SQL Essentials
+B5	6	150	Afterimage Technique — Concurrency in Go
+B6	6	150	Reading Power Levels — Back-of-the-Envelope Estimation
+B7	6	150	Kami's Ledger — GCP IAM, Service Accounts & Workload Identity
+B8	6	150	Namek's Five Minutes — Incident Response & Postmortems
+B9	6	150	Babidi's Spell — Security Beyond Auth
+B10	6	150	Instant Kamehameha — Go for People Who Already Program

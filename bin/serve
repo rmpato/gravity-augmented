@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""
+serve — the Gravity Augmented reader.
+
+Serves the web UI and a tiny JSON API over the same progress file the
+`scouter` CLI uses, so marking a capsule done in the browser shows up in
+`./bin/scouter status` and vice versa.
+
+Python 3 standard library only. No pip install, no build step.
+
+    ./bin/serve            # http://localhost:8420
+    ./bin/serve 9000       # different port
+"""
+
+import json
+import os
+import re
+import sys
+import threading
+import webbrowser
+from datetime import datetime, timezone
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+ROOT = Path(__file__).resolve().parent.parent
+WEB = ROOT / "web"
+MANIFEST = ROOT / "capsules" / "MANIFEST"
+STATE = ROOT / ".scouter" / "progress"
+
+SAGA_NAMES = [
+    "Saga 0 · Kame House",
+    "Saga 1 · Saiyan Saga",
+    "Saga 2 · Namek Saga",
+    "Saga 3 · Frieza Saga",
+    "Saga 4 · Cell Saga",
+    "Saga 5 · Buu Saga",
+    "Filler Arc",
+]
+SAGA_SUBTITLES = [
+    "Foundations",
+    "Scaling & the Edge",
+    "Data",
+    "Latency",
+    "Async",
+    "Operating It",
+    "Optional bonus",
+]
+
+SAGA_NAMES_ES = [
+    "Saga 0 · Kame House",
+    "Saga 1 · Saga Saiyan",
+    "Saga 2 · Saga de Namek",
+    "Saga 3 · Saga de Freezer",
+    "Saga 4 · Saga de Cell",
+    "Saga 5 · Saga de Buu",
+    "Arco de Relleno",
+]
+SAGA_SUBTITLES_ES = [
+    "Fundamentos",
+    "Escala y el borde",
+    "Datos",
+    "Latencia",
+    "Asincronía",
+    "Operarlo",
+    "Bonus opcional",
+]
+MAX_POWER = 9000
+MAIN_SAGAS = 5
+
+_lock = threading.Lock()
+
+
+# --- data --------------------------------------------------------------------
+
+def read_titles(path):
+    """id -> title, from a two-or-more-column tab-separated file."""
+    out = {}
+    if not path.exists():
+        return out
+    for line in path.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            out[parts[0]] = parts[-1]
+    return out
+
+
+def read_manifest():
+    titles_es = read_titles(MANIFEST.with_suffix(".es"))
+    capsules = []
+    for line in MANIFEST.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        cid, saga, points, title = parts[0], int(parts[1]), int(parts[2]), parts[3]
+        capsules.append(
+            {
+                "id": cid,
+                "saga": saga,
+                "points": points,
+                "title": title,
+                "title_es": titles_es.get(cid, title),
+                "dir": find_dir(cid),
+                "bonus": saga > MAIN_SAGAS,
+            }
+        )
+    return capsules
+
+
+def find_dir(cid):
+    for base in (ROOT / "capsules", ROOT / "capsules" / "bonus"):
+        if not base.is_dir():
+            continue
+        for d in sorted(base.iterdir()):
+            if d.is_dir() and d.name.startswith(cid + "-"):
+                return str(d.relative_to(ROOT))
+    return None
+
+
+def read_progress():
+    if not STATE.exists():
+        return {}
+    out = {}
+    for line in STATE.read_text().splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            out[parts[0]] = parts[1]
+    return out
+
+
+def write_progress(cid, status):
+    """Rewrite the progress file, preserving the CLI's exact format."""
+    with _lock:
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        rows = []
+        if STATE.exists():
+            for line in STATE.read_text().splitlines():
+                if line.split("\t")[0] != cid:
+                    rows.append(line)
+        if status in ("done", "wip"):
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            rows.append(f"{cid}\t{status}\t{stamp}")
+        rows.sort()
+        STATE.write_text("\n".join(rows) + ("\n" if rows else ""))
+
+
+def state_payload():
+    capsules = read_manifest()
+    progress = read_progress()
+    power = sum(c["points"] for c in capsules if progress.get(c["id"]) == "done")
+    for c in capsules:
+        c["status"] = progress.get(c["id"], "todo")
+    return {
+        "capsules": capsules,
+        "power": power,
+        "maxPower": MAX_POWER,
+        "sagas": [
+            {"name": n, "subtitle": s, "name_es": ne, "subtitle_es": se, "index": i}
+            for i, (n, s, ne, se) in enumerate(
+                zip(SAGA_NAMES, SAGA_SUBTITLES, SAGA_NAMES_ES, SAGA_SUBTITLES_ES)
+            )
+        ],
+        "mainSagas": MAIN_SAGAS,
+        # Which translations actually exist on disk, so the UI only offers
+        # a language toggle when there is something to toggle to.
+        "languages": ["en"] + (["es"] if (ROOT / "es" / "capsules").is_dir() else []),
+    }
+
+
+# --- http --------------------------------------------------------------------
+
+SAFE_MD = re.compile(r"^(es/)?(capsules|docs)/[A-Za-z0-9._/-]+\.md$")
+
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=str(WEB), **kw)
+
+    def log_message(self, fmt, *args):
+        if "--verbose" in sys.argv:
+            super().log_message(fmt, *args)
+
+    def _json(self, obj, code=200):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+
+        if path == "/api/state":
+            return self._json(state_payload())
+
+        if path.startswith("/api/doc/"):
+            rel = unquote(path[len("/api/doc/"):])
+            # Path containment check: no traversal outside the repo.
+            if not SAFE_MD.match(rel):
+                return self._json({"error": "bad path"}, 400)
+            target = (ROOT / rel).resolve()
+            if not str(target).startswith(str(ROOT)) or not target.is_file():
+                return self._json({"error": "not found: " + rel}, 404)
+            body = target.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return self.wfile.write(body)
+
+        return super().do_GET()
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/progress":
+            return self._json({"error": "not found"}, 404)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(n) or b"{}")
+            cid, status = data["id"], data["status"]
+            if status not in ("todo", "wip", "done"):
+                raise ValueError("bad status")
+            if not any(c["id"] == cid for c in read_manifest()):
+                raise ValueError("unknown capsule " + cid)
+        except Exception as e:  # noqa: BLE001 — surface the reason to the client
+            return self._json({"error": str(e)}, 400)
+
+        write_progress(cid, status)
+        return self._json(state_payload())
+
+
+def main():
+    port = 8420
+    for arg in sys.argv[1:]:
+        if arg.isdigit():
+            port = int(arg)
+
+    if not WEB.is_dir():
+        sys.exit(f"web/ not found at {WEB}")
+
+    url = f"http://localhost:{port}/"
+    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+
+    print()
+    print(f"  \033[38;5;208m\033[1mGRAVITY AUGMENTED\033[0m  reader")
+    print(f"  \033[2m{url}\033[0m")
+    print(f"  \033[2mprogress syncs with ./bin/scouter — Ctrl-C to stop\033[0m")
+    print()
+
+    if "--no-open" not in sys.argv:
+        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\n  reader closed.\n")
+        srv.shutdown()
+
+
+if __name__ == "__main__":
+    main()

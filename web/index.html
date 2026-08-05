@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-theme="capsule">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gravity Augmented</title>
+  <link rel="stylesheet" href="./app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23f36b21' stroke='%23182238' stroke-width='3'/><circle cx='16' cy='16' r='3' fill='%23ef5b5b'/></svg>">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand" id="brand" style="cursor:pointer">
+        <div class="seal"></div>
+        <h1 class="display">Gravity<span class="ga-sub">Augmented</span></h1>
+        <p>GCP · systems at scale</p>
+      </div>
+
+      <div class="power">
+        <div class="power-row">
+          <span class="power-label">Power level</span>
+          <span class="power-value" id="power-value">0</span>
+        </div>
+        <div class="meter"><i id="power-meter" style="width:0%"></i></div>
+        <p class="power-note" id="power-note"></p>
+      </div>
+
+      <div class="search">
+        <input id="search" type="search" placeholder="Search capsules   /" autocomplete="off">
+      </div>
+
+      <nav class="nav" id="nav"></nav>
+
+      <div class="sidebar-foot" id="themes"></div>
+      <div class="sidebar-foot lang-foot" id="langs"></div>
+    </aside>
+
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

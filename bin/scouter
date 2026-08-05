@@ -1,0 +1,354 @@
+#!/usr/bin/env bash
+# scouter — progress tracker for Gravity Augmented.
+#
+#   "It's over 9000!"  — Vegeta, misreading a scouter, 1989
+#
+# No dependencies beyond bash + coreutils. Progress is a tab-separated text
+# file so you can read, edit, grep and diff it yourself.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MANIFEST="$ROOT/capsules/MANIFEST"
+STATE_DIR="$ROOT/.scouter"
+STATE="$STATE_DIR/progress"
+REVIEWS="$STATE_DIR/reviews"
+MAX_POWER=9000
+
+mkdir -p "$STATE_DIR"
+[ -f "$STATE" ] || : > "$STATE"
+[ -f "$REVIEWS" ] || : > "$REVIEWS"
+
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  B=$'\033[1m'; DIM=$'\033[2m'; R=$'\033[0m'
+  ORANGE=$'\033[38;5;208m'; BLUE=$'\033[38;5;39m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'
+else
+  B=''; DIM=''; R=''; ORANGE=''; BLUE=''; GREEN=''; YELLOW=''
+fi
+
+SAGA_NAMES=(
+  "Saga 0 · Kame House — Foundations"
+  "Saga 1 · Saiyan Saga — Scaling & Edge"
+  "Saga 2 · Namek Saga — Data"
+  "Saga 3 · Frieza Saga — Latency"
+  "Saga 4 · Cell Saga — Async"
+  "Saga 5 · Buu Saga — Operating It"
+  "Filler Arc · optional bonus"
+)
+MAIN_SAGAS=5   # sagas 0..MAIN_SAGAS are the required arc; above that is bonus
+
+die() { printf '%s\n' "scouter: $*" >&2; exit 1; }
+
+# --- manifest access ---------------------------------------------------------
+# Emits: id \t saga \t points \t title   (comments stripped)
+manifest() { grep -v '^#' "$MANIFEST" | grep -v '^[[:space:]]*$'; }
+
+capsule_dir() {
+  local id="$1" d
+  d="$(find "$ROOT/capsules" -maxdepth 2 -type d -name "${id}-*" | head -n1)"
+  [ -n "$d" ] || die "no capsule directory for id '$id'"
+  printf '%s\n' "$d"
+}
+
+field() { # field <id> <col>
+  manifest | awk -F'\t' -v id="$1" -v c="$2" '$1==id {print $c; exit}'
+}
+
+status_of() { # status_of <id> -> todo|wip|done
+  local s
+  s="$(awk -F'\t' -v id="$1" '$1==id {v=$2} END {print v}' "$STATE")"
+  printf '%s\n' "${s:-todo}"
+}
+
+set_status() { # set_status <id> <status>
+  local id="$1" st="$2" tmp
+  tmp="$(mktemp)"
+  awk -F'\t' -v id="$id" '$1!=id' "$STATE" > "$tmp" || true
+  if [ "$st" != "todo" ]; then
+    printf '%s\t%s\t%s\n' "$id" "$st" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$tmp"
+  fi
+  sort -o "$STATE" "$tmp"
+  rm -f "$tmp"
+}
+
+power() {
+  local total=0 id pts
+  while IFS=$'\t' read -r id _ pts _; do
+    [ "$(status_of "$id")" = "done" ] && total=$((total + pts)) || true
+  done < <(manifest)
+  printf '%s\n' "$total"
+}
+
+normalize_id() { # accepts 3, 03, 3-anything -> 03 ; b1, B1, B1-anything -> B1
+  local raw="${1%%-*}"
+  if [[ "$raw" =~ ^[Bb][0-9]+$ ]]; then
+    printf 'B%d\n' "$((10#${raw:1}))"
+    return
+  fi
+  [[ "$raw" =~ ^[0-9]+$ ]] || die "'$1' is not a capsule id (try: scouter list)"
+  printf '%02d\n' "$((10#$raw))"
+}
+
+require_id() {
+  local id; id="$(normalize_id "$1")"
+  manifest | awk -F'\t' -v id="$id" '$1==id{f=1} END{exit !f}' \
+    || die "capsule $id does not exist (main arc 00-26, Filler Arc B1-B10)"
+  printf '%s\n' "$id"
+}
+
+marker() {
+  case "$1" in
+    done) printf '%s[o]%s' "$GREEN" "$R" ;;
+    wip)  printf '%s[~]%s' "$YELLOW" "$R" ;;
+    *)    printf '%s[ ]%s' "$DIM" "$R" ;;
+  esac
+}
+
+pad() { # pad <string> <width> — character-aware (printf %-Ns counts bytes)
+  local s="$1" w="$2" n=${#1}
+  printf '%s' "$s"
+  while [ "$n" -lt "$w" ]; do printf ' '; n=$((n+1)); done
+}
+
+bar() { # bar <current> <max> <width>
+  local cur="$1" max="$2" w="$3" filled
+  [ "$max" -le 0 ] && max=1
+  [ "$cur" -gt "$max" ] && cur="$max"
+  filled=$(( cur * w / max ))
+  printf '%s' "$ORANGE"
+  for ((i=0;i<filled;i++)); do printf '='; done
+  printf '%s' "$DIM"
+  for ((i=filled;i<w;i++)); do printf '·'; done
+  printf '%s' "$R"
+}
+
+# --- commands ----------------------------------------------------------------
+# --- spaced repetition ------------------------------------------------------
+#
+# You forget most of a capsule within a week unless you retrieve it. Retrieval
+# — answering from memory, badly, before checking — is what moves it. Rereading
+# feels productive and does almost nothing.
+#
+# Intervals are the boring, well-evidenced ones: 3, 7, 21 days.
+INTERVALS="3 7 21"
+
+epoch() { # epoch <iso8601-utc> -> seconds, or empty if unparseable
+  if date -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null; then :        # BSD/macOS
+  elif date -d "$1" +%s 2>/dev/null; then :                              # GNU
+  fi
+}
+
+completed_at() { awk -F'\t' -v id="$1" '$1==id && $2=="done" {print $3}' "$STATE"; }
+
+last_review() { # highest interval already reviewed for <id>, or 0
+  awk -F'\t' -v id="$1" '$1==id {if ($2+0 > m) m = $2+0} END {print m+0}' "$REVIEWS"
+}
+
+due_interval() { # -> the interval this capsule is due for, or empty
+  local id="$1" ts start now age seen i
+  ts="$(completed_at "$id")"; [ -n "$ts" ] || return 0
+  start="$(epoch "$ts")"; [ -n "$start" ] || return 0
+  now="$(date -u +%s)"
+  age=$(( (now - start) / 86400 ))
+  seen="$(last_review "$id")"
+  for i in $INTERVALS; do
+    if [ "$age" -ge "$i" ] && [ "$seen" -lt "$i" ]; then printf '%s\n' "$i"; return 0; fi
+  done
+}
+
+due_ids() { local id; while IFS=$'\t' read -r id _ _ _; do
+    [ "$(status_of "$id")" = done ] || continue
+    [ -n "$(due_interval "$id")" ] && printf '%s\n' "$id" || true
+  done < <(manifest); }
+
+# One question, pulled from the capsule's own Battle drill. Deterministic per
+# capsule+interval so a re-run asks the same thing.
+drill_question() { # drill_question <id> <n>
+  local dir; dir="$(capsule_dir "$1")"
+  grep -o '<summary>.*</summary>' "$dir/README.md" 2>/dev/null \
+    | sed -e 's/<[^>]*>//g' -e 's/^[0-9]*\.[[:space:]]*//' \
+    | awk -v n="$2" '{q[NR]=$0} END {if (NR) print q[(n % NR) + 1]}'
+}
+
+cmd_review() {
+  if [ $# -gt 0 ]; then
+    local id iv dir
+    id="$(require_id "$1")"
+    iv="$(due_interval "$id")"
+    dir="$(capsule_dir "$id")"
+    printf '\n  %sCapsule %s · %s%s\n\n' "$B" "$id" "$(field "$id" 4)" "$R"
+    printf '  %sAnswer these out loud BEFORE opening the capsule. A wrong answer you\n' "$DIM"
+    printf '  committed to is worth more than a right one you read.%s\n\n' "$R"
+    grep -o '<summary>.*</summary>' "$dir/README.md" \
+      | sed -e 's/<[^>]*>//g' -e 's/^/  · /'
+    printf '\n  %s%s/README.md%s\n' "$DIM" "$dir" "$R"
+    if [ -n "$iv" ]; then
+      printf '%s\t%s\t%s\n' "$id" "$iv" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$REVIEWS"
+      printf '  %s✔ day-%s review logged%s\n\n' "$GREEN" "$iv" "$R"
+    else
+      printf '  %s(not due — nothing logged)%s\n\n' "$DIM" "$R"
+    fi
+    return
+  fi
+
+  local ids n=0
+  ids="$(due_ids)"
+  if [ -z "$ids" ]; then
+    printf '\n  %sNothing due for review.%s Come back in a few days.\n\n' "$DIM" "$R"
+    return
+  fi
+  printf '\n  %sDUE FOR REVIEW%s  %s· retrieve, then check%s\n\n' "$B$ORANGE" "$R" "$DIM" "$R"
+  local id iv
+  while read -r id; do
+    [ -n "$id" ] || continue
+    n=$((n+1)); iv="$(due_interval "$id")"
+    printf '  %s%s%s  day-%-2s  %s\n' "$B" "$id" "$R" "$iv" "$(field "$id" 4)"
+    printf '        %s%s%s\n' "$DIM" "$(drill_question "$id" "$iv")" "$R"
+  done <<< "$ids"
+  printf '\n  %sscouter review <id>%s  to see the full drill and log it.\n\n' "$B" "$R"
+}
+
+cmd_status() {
+  local p done_n=0 total_n=0 id sg
+  p="$(power)"
+  while IFS=$'\t' read -r id sg _ _; do
+    [ "$sg" -gt "$MAIN_SAGAS" ] && continue
+    total_n=$((total_n + 1))
+    [ "$(status_of "$id")" = done ] && done_n=$((done_n + 1)) || true
+  done < <(manifest)
+
+  printf '\n  %sGRAVITY AUGMENTED%s  %s· scouter readout%s\n\n' "$B$ORANGE" "$R" "$DIM" "$R"
+  printf '  POWER LEVEL  %s%s%s / %s\n' "$B$ORANGE" "$p" "$R" "$MAX_POWER"
+  printf '  %s  %s%d%%%s\n\n' "$(bar "$p" "$MAX_POWER" 40)" "$DIM" "$((p*100/MAX_POWER))" "$R"
+  printf '  main arc complete   %s%s of %s capsules%s\n' "$B" "$done_n" "$total_n" "$R"
+
+  local s
+  for s in "${!SAGA_NAMES[@]}"; do
+    local d=0 t=0 st
+    while IFS=$'\t' read -r id sg _ _; do
+      [ "$sg" = "$s" ] || continue
+      t=$((t+1)); st="$(status_of "$id")"; [ "$st" = done ] && d=$((d+1)) || true
+    done < <(manifest)
+    [ "$t" -eq 0 ] && continue
+    local colour="$BLUE"; [ "$s" -gt "$MAIN_SAGAS" ] && colour="$DIM"
+    printf '  %s%s%s %s %s%d/%d%s\n' "$colour" "$(pad "${SAGA_NAMES[$s]}" 38)" "$R" "$(bar "$d" "$t" 12)" "$DIM" "$d" "$t" "$R"
+  done
+
+  if [ "$p" -gt "$MAX_POWER" ]; then
+    printf '\n  %sIT IS OVER 9000.%s %sFiller Arc capsules do that.%s\n' "$B$ORANGE" "$R" "$DIM" "$R"
+  elif [ "$p" -eq "$MAX_POWER" ]; then
+    printf '\n  %sWHAT?! 9000?!%s\n' "$B$ORANGE" "$R"
+    printf '  %sThe main arc is done. The Filler Arc takes you over.%s\n' "$DIM" "$R"
+  fi
+  local due_n; due_n="$(due_ids | grep -c . || true)"
+  if [ "$due_n" -gt 0 ]; then
+    printf '\n  %s↻ %s capsule(s) due for review%s  %s· scouter review%s\n' \
+      "$YELLOW" "$due_n" "$R" "$DIM" "$R"
+  fi
+
+  printf '\n'
+  cmd_next
+}
+
+cmd_next() {
+  local id st dir title sg
+  while IFS=$'\t' read -r id sg _ title; do
+    [ "$sg" -gt "$MAIN_SAGAS" ] && continue   # Filler Arc is opt-in, never "next"
+    st="$(status_of "$id")"
+    [ "$st" = "done" ] && continue
+    dir="$(capsule_dir "$id")"
+    printf '  %sNEXT%s  Capsule %s · %s\n' "$B$ORANGE" "$R" "$id" "$title"
+    printf '        %s%s/README.md%s\n' "$DIM" "${dir#"$ROOT"/}" "$R"
+    [ "$st" = "wip" ] && printf '        %s(already in progress)%s\n' "$YELLOW" "$R" || true
+    printf '\n'
+    return 0
+  done < <(manifest)
+  printf '  %sThe main arc is complete.%s %sTry: scouter list — the Filler Arc is still open.%s\n\n' "$GREEN" "$R" "$DIM" "$R"
+}
+
+cmd_list() {
+  local id sg pts title st last_sg=""
+  printf '\n'
+  while IFS=$'\t' read -r id sg pts title; do
+    if [ "$sg" != "$last_sg" ]; then
+      printf '  %s%s%s\n' "$B$BLUE" "${SAGA_NAMES[$sg]}" "$R"
+      last_sg="$sg"
+    fi
+    st="$(status_of "$id")"
+    printf '    %s %s%s%s  %s\n' "$(marker "$st")" "$DIM" "$(pad "$id" 3)" "$R" "$title"
+  done < <(manifest)
+  printf '\n'
+}
+
+cmd_start() {
+  local id; id="$(require_id "${1:?usage: scouter start <id>}")"
+  if [ "$(status_of "$id")" = "done" ]; then die "capsule $id is already done (use: scouter reset $id)"; fi
+  set_status "$id" wip
+  printf '  %s~%s Capsule %s in progress: %s\n' "$YELLOW" "$R" "$id" "$(field "$id" 4)"
+  printf '  %s%s/README.md%s\n\n' "$DIM" "$(capsule_dir "$id" | sed "s|$ROOT/||")" "$R"
+}
+
+cmd_done() {
+  local id before after pts
+  id="$(require_id "${1:?usage: scouter done <id>}")"
+  before="$(power)"
+  set_status "$id" done
+  after="$(power)"
+  pts=$((after - before))
+  printf '\n  %s✔ Capsule %s complete%s — %s\n' "$GREEN" "$id" "$R" "$(field "$id" 4)"
+  [ "$pts" -gt 0 ] && printf '  %s+%s power level%s  (%s → %s%s%s)\n' "$ORANGE" "$pts" "$R" "$before" "$B" "$after" "$R" || true
+  if [ "$before" -lt 9000 ] && [ "$after" -ge 9000 ]; then
+    printf '\n  %sIT IS OVER 9000.%s\n' "$B$ORANGE" "$R"
+  fi
+  printf '\n'
+  cmd_next
+}
+
+cmd_reset() {
+  if [ "${1:-}" = "--all" ]; then
+    : > "$STATE"; printf '  all progress cleared.\n'; return
+  fi
+  local id; id="$(require_id "${1:?usage: scouter reset <id> | scouter reset --all}")"
+  set_status "$id" todo
+  printf '  capsule %s reset to todo.\n' "$id"
+}
+
+cmd_open() {
+  local id dir; id="$(require_id "${1:?usage: scouter open <id>}")"
+  dir="$(capsule_dir "$id")"
+  if [ -n "${EDITOR:-}" ]; then "$EDITOR" "$dir/README.md"
+  elif command -v open >/dev/null; then open "$dir/README.md"
+  else printf '%s/README.md\n' "$dir"; fi
+}
+
+usage() {
+  cat <<'EOF'
+
+  scouter — Gravity Augmented progress tracker
+
+    scouter status          power level, saga progress, what's next
+    scouter next            just what's next
+    scouter list            all capsules and their state
+    scouter start  <id>     mark a capsule in progress
+    scouter done   <id>     mark complete, award power level
+    scouter reset  <id>     send it back to todo  (--all wipes everything)
+    scouter review [<id>]   spaced repetition — what you're about to forget
+    scouter open   <id>     open the capsule in $EDITOR
+
+  <id> may be 3, 03, or 03-bulma-blueprints-iac.
+  Filler Arc (optional bonus) capsules are b1 … B10.
+
+EOF
+}
+
+case "${1:-status}" in
+  status|s)     cmd_status ;;
+  next|n)       cmd_next ;;
+  list|ls|l)    cmd_list ;;
+  start)        shift; cmd_start "$@" ;;
+  done|complete)shift; cmd_done "$@" ;;
+  reset)        shift; cmd_reset "$@" ;;
+  review|r)     shift; cmd_review "$@" ;;
+  open|o)       shift; cmd_open "$@" ;;
+  help|-h|--help) usage ;;
+  *)            usage; exit 1 ;;
+esac

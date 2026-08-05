@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# doctor — checks your machine has what the capsules need.
+# Nothing here is fatal. It tells you what's missing and how to get it,
+# with the right command for YOUR platform.
+set -uo pipefail
+
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  B=$'\033[1m'; DIM=$'\033[2m'; R=$'\033[0m'
+  GREEN=$'\033[32m'; RED=$'\033[31m'; YELLOW=$'\033[33m'; ORANGE=$'\033[38;5;208m'
+  BLUE=$'\033[38;5;39m'
+else B=''; DIM=''; R=''; GREEN=''; RED=''; YELLOW=''; ORANGE=''; BLUE=''; fi
+
+# --- platform detection ------------------------------------------------------
+OS="unknown"; PKG="unknown"; WSL="no"
+case "$(uname -s)" in
+  Darwin) OS="macOS"; PKG="brew" ;;
+  Linux)
+    OS="Linux"
+    grep -qi microsoft /proc/version 2>/dev/null && { OS="Windows (WSL2)"; WSL="yes"; }
+    if   command -v apt    >/dev/null 2>&1; then PKG="apt"
+    elif command -v dnf    >/dev/null 2>&1; then PKG="dnf"
+    elif command -v pacman >/dev/null 2>&1; then PKG="pacman"
+    elif command -v brew   >/dev/null 2>&1; then PKG="brew"
+    fi
+    ;;
+  MINGW*|MSYS*|CYGWIN*) OS="Windows (native shell)"; PKG="winget" ;;
+esac
+
+# install <name> — the right command for this platform
+inst() {
+  case "$PKG" in
+    brew)   printf 'brew install %s' "$1" ;;
+    apt)    printf 'sudo apt install -y %s' "${2:-$1}" ;;
+    dnf)    printf 'sudo dnf install -y %s' "${2:-$1}" ;;
+    pacman) printf 'sudo pacman -S %s' "${2:-$1}" ;;
+    winget) printf 'winget install %s  (better: use WSL2 — see docs/tools.md)' "$1" ;;
+    *)      printf 'install %s' "$1" ;;
+  esac
+}
+
+missing=0; optional_missing=0
+
+row()  { printf '  %-14s %s %s\n' "$1" "$2" "${3:-}"; }
+ok()   { row "$1" "${GREEN}ok${R}     " "${DIM}$2${R}"; }
+warn() { row "$1" "${YELLOW}later${R}  " "${DIM}$2${R}"; optional_missing=$((optional_missing+1)); }
+bad()  { row "$1" "${RED}missing${R}" "${DIM}$2${R}"; missing=$((missing+1)); }
+soft() { row "$1" "${YELLOW}$2${R}" "${DIM}$3${R}"; optional_missing=$((optional_missing+1)); }
+
+printf '\n  %sGRAVITY AUGMENTED%s %s· environment check%s\n' "$B$ORANGE" "$R" "$DIM" "$R"
+printf '  %splatform: %s · package manager: %s%s\n\n' "$DIM" "$OS" "$PKG" "$R"
+
+if [ "$OS" = "Windows (native shell)" ]; then
+  printf '  %sThe capsules assume a Unix shell. Install WSL2 and run this from inside it:%s\n' "$YELLOW" "$R"
+  printf '  %swsl --install -d Ubuntu-24.04%s   (admin PowerShell, then reboot)\n' "$B" "$R"
+  printf '  %sSee docs/tools.md#windows-use-wsl2%s\n\n' "$DIM" "$R"
+fi
+
+printf '  %sREQUIRED FROM CAPSULE 00%s\n' "$B" "$R"
+
+if command -v git >/dev/null 2>&1; then
+  ok git "$(git --version | awk '{print $3}')"
+else
+  [ "$PKG" = brew ] && bad git "xcode-select --install" || bad git "$(inst git)"
+fi
+
+if command -v go >/dev/null 2>&1; then
+  gv="$(go version | awk '{print $3}' | sed 's/^go//')"
+  maj="${gv%%.*}"; min="$(printf '%s' "$gv" | cut -d. -f2)"
+  if [ "$maj" -gt 1 ] || { [ "$maj" -eq 1 ] && [ "$min" -ge 22 ]; }; then
+    ok go "$gv"
+  else
+    soft go "old    " "$gv — capsules assume 1.22+. See docs/tools.md"
+  fi
+else
+  bad go "$(inst go golang-go) — see docs/tools.md for a current Go on Linux"
+fi
+
+if command -v docker >/dev/null 2>&1; then
+  if docker info >/dev/null 2>&1; then
+    ok docker "$(docker --version | awk '{print $3}' | tr -d ,) · daemon running"
+  else
+    case "$OS" in
+      macOS) soft docker "stopped" "installed, but the daemon isn't running — start OrbStack / Docker Desktop" ;;
+      *)     soft docker "stopped" "try: sudo systemctl start docker   (and: sudo usermod -aG docker \$USER)" ;;
+    esac
+  fi
+else
+  case "$PKG" in
+    brew) bad docker "brew install --cask orbstack   (lighter than Docker Desktop)" ;;
+    *)    bad docker "curl -fsSL https://get.docker.com | sh" ;;
+  esac
+fi
+
+if docker compose version >/dev/null 2>&1; then
+  ok compose "$(docker compose version --short 2>/dev/null)"
+elif command -v docker >/dev/null 2>&1; then
+  bad compose "docker compose v2 plugin not found — $(inst docker-compose-plugin docker-compose-plugin)"
+fi
+
+if command -v make >/dev/null 2>&1; then
+  ok make "$(make --version | head -1 | awk '{print $3}')"
+else
+  [ "$PKG" = brew ] && bad make "xcode-select --install" || bad make "$(inst make build-essential)"
+fi
+
+command -v curl    >/dev/null 2>&1 && ok curl "present"    || bad curl "$(inst curl)"
+command -v python3 >/dev/null 2>&1 && ok python3 "$(python3 -V 2>&1 | awk '{print $2}')" || bad python3 "$(inst python3) — needed by ./bin/serve"
+
+printf '\n  %sNEEDED LATER (install when the capsule asks)%s\n' "$B" "$R"
+command -v jq         >/dev/null 2>&1 && ok jq "$(jq --version)"                            || warn jq         "capsule 01 · $(inst jq)"
+command -v lazydocker >/dev/null 2>&1 && ok lazydocker "present"                            || warn lazydocker "capsule 02 · $(inst lazydocker) — see docs/tools.md"
+command -v terraform  >/dev/null 2>&1 && ok terraform "$(terraform version | head -1 | awk '{print $2}')" || warn terraform "capsule 03 · $(inst terraform)"
+command -v gcloud     >/dev/null 2>&1 && ok gcloud "$(gcloud version 2>/dev/null | head -1 | awk '{print $4}')" || warn gcloud "capsule 04 · see docs/tools.md"
+command -v k6         >/dev/null 2>&1 && ok k6 "$(k6 version 2>/dev/null | awk '{print $2}')" || warn k6        "capsule 09 · $(inst k6)"
+command -v psql       >/dev/null 2>&1 && ok psql "$(psql --version | awk '{print $3}')"      || warn psql       "capsule 10 · $(inst libpq postgresql-client)"
+command -v redis-cli  >/dev/null 2>&1 && ok redis-cli "present"                              || warn redis-cli  "capsule 14 · $(inst redis redis-tools)"
+
+printf '\n  %sNICE TO HAVE%s\n' "$B" "$R"
+if [ -d "/Applications/Ghostty.app" ] || command -v ghostty >/dev/null 2>&1; then
+  ok ghostty "present"
+elif [ "$WSL" = "yes" ]; then
+  row ghostty "${DIM}n/a${R}    " "${DIM}on WSL2 use Windows Terminal — see docs/tools.md${R}"
+else
+  warn ghostty "$(inst ghostty) — see docs/tools.md"
+fi
+command -v direnv >/dev/null 2>&1 && ok direnv "present" || warn direnv "$(inst direnv)"
+command -v fzf    >/dev/null 2>&1 && ok fzf    "present" || warn fzf    "$(inst fzf)"
+command -v rg     >/dev/null 2>&1 && ok ripgrep "present" || warn ripgrep "$(inst ripgrep)"
+
+if [ "$WSL" = "yes" ]; then
+  printf '\n  %sWSL2 CHECKS%s\n' "$B" "$R"
+  case "$PWD" in
+    /mnt/*) row filesystem "${RED}slow${R}   " "${DIM}this repo is on the Windows filesystem. Move it to ~/repos — builds are 10-20x faster${R}"; missing=$((missing+1)) ;;
+    *)      ok filesystem "native ext4 — good" ;;
+  esac
+  if [ "$(git config --global core.autocrlf 2>/dev/null)" = "input" ]; then
+    ok "line endings" "core.autocrlf=input"
+  else
+    warn "line endings" "git config --global core.autocrlf input"
+  fi
+fi
+
+printf '\n'
+if [ "$missing" -gt 0 ]; then
+  printf '  %s%d required item(s) need attention.%s Fix those, then re-run. See docs/tools.md\n\n' "$RED" "$missing" "$R"
+  exit 1
+fi
+printf '  %sReady to train.%s' "$GREEN" "$R"
+[ "$optional_missing" -gt 0 ] && printf ' %s(%d optional tools will be requested by later capsules)%s' "$DIM" "$optional_missing" "$R"
+printf '\n\n  Next:  %s./bin/scouter status%s   or   %s./bin/serve%s  to read in a browser\n\n' "$B" "$R" "$B" "$R"
