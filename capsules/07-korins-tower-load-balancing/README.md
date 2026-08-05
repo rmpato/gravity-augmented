@@ -239,13 +239,47 @@ Uncomment `least_conn;` in `nginx.conf`, then:
 docker compose -f docker-compose.scale.yml restart lb
 ```
 
-Re-run Step 2 exactly. Compare the tail (`tail -5`). It should be visibly
-better: nginx now avoids backends with requests in flight.
+Re-run Step 2 exactly, and compare the tail (`tail -5`).
 
-> **The takeaway is not "least_conn is better".** It's that *the algorithm
-> matters exactly when request durations vary*, and that you can only see the
-> difference in the **tail**, not the average. If you'd measured the mean you'd
-> have concluded there was no difference.
+> **You will probably not see an improvement. That is the correct result, and
+> it is the point of this step.**
+>
+> This lab was run repeatedly on 3 backends at `cpus: 0.5` with 30M-round
+> chains. Measured maxima:
+>
+> | Setup | round-robin | least_conn |
+> |---|---|---|
+> | 6 slow requests | 85.6 ms | 88.5 ms |
+> | 4 slow requests | 60.0 ms | 122.2 ms |
+>
+> Repeating an identical run changed the numbers by more than the gap between
+> the two algorithms. **The noise floor is larger than the effect.**
+
+Three reasons, and each is worth more than a rigged win would have been:
+
+1. **Six slow requests over three backends is 2/2/2 — perfectly even.** That is
+   round-robin's *best* case. It only loses when load lands unevenly, so a
+   benchmark that divides evenly cannot show a difference by construction. Try
+   4 or 5 slow requests instead and watch how much the numbers move around.
+2. **`least_conn` balances connections, not work.** It has no idea one backend
+   is burning CPU. With `keepalive 32` above, a connection is reused across
+   requests, so the count it balances on drifts further from actual load.
+3. **Go preempts CPU-bound goroutines.** A backend chewing through a hash chain
+   still answers `/healthz` in ~2 ms, because the scheduler interleaves them.
+   The intuition that a busy backend is a *blocked* backend comes from
+   thread-per-request servers with a fixed pool. Go doesn't work that way.
+
+So when does `least_conn` actually earn its place? When connections are
+long-lived and genuinely uneven — WebSockets, streaming responses, gRPC
+channels, or a backend that really does serialise work per connection. Reach
+for it there, not as a default.
+
+> **The real takeaway:** you just ran a benchmark, got no signal, and correctly
+> concluded "no evidence of a difference" instead of squinting until you saw
+> one. That instinct is worth more than any load-balancing algorithm. **Measure
+> the noise before you trust the number** — if you don't know your run-to-run
+> variance, you can't tell an improvement from luck. Capsule 09 makes this
+> rigorous.
 
 ### Step 4 — health checks and detection time
 

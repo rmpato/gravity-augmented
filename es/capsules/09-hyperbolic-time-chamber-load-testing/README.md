@@ -157,6 +157,17 @@ k6 es un generador de carga que se scriptea en JavaScript y reporta percentiles
 posta. Su executor `constant-arrival-rate` te da un modelo abierto de verdad, que
 es por qué lo usamos en vez de `ab` o `wrk`.
 
+> **¿No querés instalar otro binario?** k6 corre perfecto desde su propia
+> imagen, y cada `k6 run …` de esta cápsula se traduce a:
+>
+> ```bash
+> docker run --rm -i --network host -v "$PWD/scripts/load:/s:ro" \
+>   grafana/k6 run -e BASE=http://localhost:8080 /s/smoke.js
+> ```
+>
+> `--network host` es lo que le permite al container llegar a tu servicio en
+> `localhost`. Esta cápsula entera se verificó así.
+
 ### Paso 1 — un smoke test
 
 **`scripts/load/smoke.js`** en `gravity-chamber`:
@@ -247,10 +258,38 @@ Corrélo contra el container para poder restringir recursos:
 
 ```bash
 make docker-build
-docker run -d --rm -p 8080:8080 --name hbtc --cpus=1 --memory=512m scouter:latest
+docker run -d --rm -p 8080:8080 --name hbtc --cpus=0.25 --memory=512m scouter:latest
 
 k6 run scripts/load/stress.js
 ```
+
+> **Por qué `--cpus=0.25` y no 1.** Un servicio Go en memoria sobre una laptop
+> moderna es muchísimo más rápido que esta rampa. Medido en una Mac M-series de
+> 8 cores, con el mismo script:
+>
+> | Límite del servicio | p95 | pico de VUs | iteraciones descartadas |
+> |---|---|---|---|
+> | `--cpus=1` | **1,16 ms** | 3 | 0 |
+> | `--cpus=0.25` | **68 ms** | 151 | 332 |
+>
+> Con `--cpus=1` no hay ningún codo que encontrar — la latencia queda plana
+> hasta los 1600 rps y k6 nunca necesita más de 3 VUs concurrentes. Concluirías
+> que el servicio escala infinito, que es exactamente el error que esta cápsula
+> existe para prevenir.
+>
+> Dos corridas de esa segunda fila dieron p95 de 68 ms y 30 ms, con picos de VUs
+> de 151 y 45. **Tus números exactos van a diferir y no van a repetirse — lo que
+> es estable es la forma.** La brecha entre restringido y sin restringir (26–60×)
+> es mucho más grande que esa dispersión entre corridas, y eso es lo que hace que
+> el codo sea un hallazgo real y no ruido. La Cápsula 07 te muestra el caso
+> opuesto, donde un efecto más chico que la varianza no es un hallazgo.
+>
+> **Si tu máquina es rápida, BAJÁ el límite hasta poder ver el precipicio.**
+> Elegir la restricción para que el efecto sea visible es parte legítima del load
+> testing — no estás haciendo trampa, estás eligiendo una escala donde la
+> dinámica se puede observar. Mirá las columnas de pico de VUs e iteraciones
+> descartadas: se mueven mucho antes que la latencia, lo que las hace la señal
+> de saturación más temprana que tenés.
 
 En un segundo panel, mirá cómo pasa:
 

@@ -243,13 +243,49 @@ Descomentá `least_conn;` en `nginx.conf`, después:
 docker compose -f docker-compose.scale.yml restart lb
 ```
 
-Volvé a correr el Paso 2 exactamente igual. Compará la cola (`tail -5`). Debería
-ser visiblemente mejor: nginx ahora evita backends con requests en vuelo.
+Volvé a correr el Paso 2 exactamente igual, y compará la cola (`tail -5`).
 
-> **La conclusión no es "least_conn es mejor".** Es que *el algoritmo importa
-> exactamente cuando las duraciones de request varían*, y que solo podés ver la
-> diferencia en la **cola**, no en el promedio. Si hubieras medido la media,
-> habrías concluido que no había diferencia.
+> **Lo más probable es que NO veas una mejora. Ese es el resultado correcto, y
+> es el punto de este paso.**
+>
+> Este lab se corrió varias veces sobre 3 backends con `cpus: 0.5` y cadenas de
+> 30M rounds. Máximos medidos:
+>
+> | Setup | round-robin | least_conn |
+> |---|---|---|
+> | 6 requests lentos | 85,6 ms | 88,5 ms |
+> | 4 requests lentos | 60,0 ms | 122,2 ms |
+>
+> Repetir una corrida idéntica cambió los números más que la diferencia entre
+> los dos algoritmos. **El piso de ruido es más grande que el efecto.**
+
+Tres razones, y cada una vale más que una demo arreglada:
+
+1. **Seis requests lentos sobre tres backends es 2/2/2 — perfectamente parejo.**
+   Ese es el *mejor* caso de round-robin. Solo pierde cuando la carga cae
+   despareja, así que un benchmark que divide exacto no puede mostrar diferencia
+   por construcción. Probá con 4 o 5 requests lentos y mirá cuánto se mueven los
+   números.
+2. **`least_conn` balancea conexiones, no trabajo.** No tiene idea de que un
+   backend está quemando CPU. Con el `keepalive 32` de arriba, una conexión se
+   reutiliza entre requests, así que el conteo sobre el que balancea se aleja
+   todavía más de la carga real.
+3. **Go interrumpe (preempts) goroutines CPU-bound.** Un backend masticando una
+   cadena de hashes igual responde `/healthz` en ~2 ms, porque el scheduler los
+   intercala. La intuición de que un backend ocupado es un backend *bloqueado*
+   viene de servidores thread-per-request con un pool fijo. Go no funciona así.
+
+¿Entonces cuándo se gana `least_conn` su lugar? Cuando las conexiones son largas
+y genuinamente desparejas — WebSockets, respuestas en streaming, canales gRPC, o
+un backend que realmente serializa el trabajo por conexión. Usalo ahí, no como
+default.
+
+> **La conclusión posta:** acabás de correr un benchmark, no obtuviste señal, y
+> concluiste correctamente "no hay evidencia de diferencia" en vez de entrecerrar
+> los ojos hasta ver una. Ese instinto vale más que cualquier algoritmo de load
+> balancing. **Medí el ruido antes de confiar en el número** — si no conocés tu
+> varianza entre corridas, no podés distinguir una mejora de la suerte. La
+> Cápsula 09 lo hace riguroso.
 
 ### Paso 4 — health checks y tiempo de detección
 

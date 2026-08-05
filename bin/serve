@@ -133,7 +133,14 @@ def read_progress():
 
 
 def write_progress(cid, status):
-    """Rewrite the progress file, preserving the CLI's exact format."""
+    """Rewrite the progress file, preserving the CLI's exact format.
+
+    Every write is echoed to the console. Your progress is yours, and you should
+    never have to wonder why it changed — if a line appears here that you didn't
+    cause by clicking, that is a bug worth reporting.
+    """
+    print(f"  \033[2m{datetime.now().strftime('%H:%M:%S')}\033[0m  "
+          f"capsule \033[1m{cid}\033[0m -> {status}", flush=True)
     with _lock:
         STATE.parent.mkdir(parents=True, exist_ok=True)
         rows = []

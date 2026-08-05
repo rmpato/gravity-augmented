@@ -151,6 +151,17 @@ k6 is a load generator that scripts in JavaScript and reports proper
 percentiles. Its `constant-arrival-rate` executor gives you a true open model,
 which is why we're using it over `ab` or `wrk`.
 
+> **Don't want another binary?** k6 runs fine from its own image, and every
+> `k6 run …` in this capsule maps to:
+>
+> ```bash
+> docker run --rm -i --network host -v "$PWD/scripts/load:/s:ro" \
+>   grafana/k6 run -e BASE=http://localhost:8080 /s/smoke.js
+> ```
+>
+> `--network host` is what lets the container reach your service on
+> `localhost`. This whole capsule was verified that way.
+
 ### Step 1 — a smoke test
 
 **`scripts/load/smoke.js`** in `gravity-chamber`:
@@ -241,10 +252,37 @@ Run it against the container so you can constrain resources:
 
 ```bash
 make docker-build
-docker run -d --rm -p 8080:8080 --name hbtc --cpus=1 --memory=512m scouter:latest
+docker run -d --rm -p 8080:8080 --name hbtc --cpus=0.25 --memory=512m scouter:latest
 
 k6 run scripts/load/stress.js
 ```
+
+> **Why `--cpus=0.25` and not 1.** An in-memory Go service on a modern laptop is
+> far faster than this ramp. Measured on an 8-core M-series Mac, same script:
+>
+> | Service limit | p95 | peak VUs | dropped iterations |
+> |---|---|---|---|
+> | `--cpus=1` | **1.16 ms** | 3 | 0 |
+> | `--cpus=0.25` | **68 ms** | 151 | 332 |
+>
+> At `--cpus=1` there is no knee to find — latency is flat all the way to 1600
+> rps and k6 never needs more than 3 concurrent VUs. You would conclude the
+> service is infinitely scalable, which is the exact error this capsule exists
+> to prevent.
+>
+> Two runs of that second row gave p95 of 68 ms and 30 ms, with peak VUs of 151
+> and 45. **Your exact numbers will differ and will not repeat — the shape is
+> what's stable.** The gap between constrained and unconstrained (26–60×) is far
+> larger than that run-to-run spread, which is what makes the knee a real finding
+> rather than noise. Capsule 07 shows you the opposite case, where an effect
+> smaller than the variance is not a finding at all.
+>
+> **If your machine is fast, turn the limit DOWN until you can see the cliff.**
+> Choosing the constraint so the effect is visible is a legitimate part of load
+> testing — you are not cheating, you are picking a scale where the dynamics
+> are observable. Note the peak-VU and dropped-iteration columns: those move
+> long before latency does, which makes them the earliest saturation signal you
+> have.
 
 In a second pane, watch it happen:
 

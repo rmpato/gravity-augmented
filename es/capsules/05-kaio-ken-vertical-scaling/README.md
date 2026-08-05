@@ -153,6 +153,12 @@ y el handler, más sus imports de `crypto/sha256` y `strconv`:
 func (s *Server) handleTrain(w http.ResponseWriter, r *http.Request) {
 	rounds := 1_000_000
 	if v := r.URL.Query().Get("rounds"); v != "" {
+		// NOTE THE SILENT FALLBACK. Ask for more than the cap and you get the
+		// DEFAULT, with no error — so a too-large `rounds` looks like a very
+		// fast machine rather than a rejected request. Always check
+		// `duration_ms` in the response rather than trusting what you asked
+		// for. (Capsule 07 leans on this endpoint; if its "slow" requests come
+		// back in 20ms, this is why.)
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50_000_000 {
 			rounds = n
 		}
