@@ -39,6 +39,32 @@ Point 3 is the one that keeps finding real bugs. See
 [`docs/maintainers/build-log.md`](docs/maintainers/build-log.md) — most entries
 in it were invisible to reading and only appeared on execution.
 
+Points 4 and 5, plus every registry and surface a capsule has to appear in, are
+machine-checkable:
+
+```bash
+python3 scripts/maintainers/validate.py
+```
+
+It exits non-zero, so it can gate a PR. Points 1-3 are on you.
+
+### Runbooks
+
+Step-by-step procedures live in
+[`docs/maintainers/runbooks.md`](docs/maintainers/runbooks.md):
+
+| # | Runbook |
+|---|---|
+| 1 | Add a bonus capsule — the common case, a MINOR |
+| 2 | Add a main-arc capsule — rare, and it has to rebalance to 9000 |
+| 3 | Fix a capsule someone is mid-course on — the urgent path |
+| 4 | Cut a release |
+| 5 | Renumber or remove a capsule — MAJOR, and the one that reaches into a learner's machine |
+| 6 | Update the reference repo, including rewriting its tags |
+
+Plus a table of **what a capsule touches** — every file, what breaks if it is
+wrong, and whether anything catches it.
+
 ---
 
 ## Versioning
