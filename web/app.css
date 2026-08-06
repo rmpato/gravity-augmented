@@ -72,6 +72,15 @@
     --shadow-panel: 0 20px 0 rgba(26, 21, 16, 0.14), 0 26px 48px rgba(18, 16, 14, 0.28);
 }
 
+[data-theme="freezer"] {
+    --orange: #9d4edd; --orange-dark: #6a2fa0; --navy: #2b1b4d;
+    --panel: #faf8ff; --canvas: #e3ddf2; --surface: #faf8ff; --sidebar: #2b1b4d;
+    --ink: #1a1230; --muted: #6b6485; --subtle: #9d97b3; --border: #c8c2da;
+    --accent: #00c2d1; --energy: #9fe4f2; --coral: #e5566d; --coral-dark: #b8354c;
+    --shadow-ink: 3px 3px 0 #1a1230; --shadow-shell: 5px 5px 0 #1a1230;
+    --shadow-panel: 0 20px 0 rgba(26, 18, 48, 0.12), 0 26px 48px rgba(43, 27, 77, 0.24);
+}
+
 /* --- base ---------------------------------------------------------------- */
 
 *, *::before, *::after { box-sizing: border-box; }

@@ -6,7 +6,7 @@
 
 import { render } from "./md.js";
 
-const THEMES = ["capsule", "goku", "piccolo", "bulma", "majin-buu", "mr-popo"];
+const THEMES = ["capsule", "goku", "piccolo", "bulma", "majin-buu", "mr-popo", "freezer"];
 
 const LANG_NAMES = { en: "EN", es: "ES" };
 
