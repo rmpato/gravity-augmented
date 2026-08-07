@@ -611,7 +611,7 @@ Requirements to make that real:
 | Hit ratio near zero | Keys differ per request (a timestamp or random value in the key), or TTL is shorter than the request interval. Print the keys. |
 | Stale data after a write | Invalidation isn't running, or it deletes a differently-constructed key. Use one shared key-builder function. |
 | Cache slower than the database | Serialisation cost on large values, or a network hop for a query that took 0.2 ms. Not everything deserves a cache. |
-| Memory keeps growing | Keys without TTLs. `redis-cli --scan | head` then `TTL <key>` — anything returning `-1` is immortal. |
+| Memory keeps growing | Keys without TTLs. `redis-cli --scan \| head` then `TTL <key>` — anything returning `-1` is immortal. |
 
 ---
 
