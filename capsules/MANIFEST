@@ -1,7 +1,7 @@
 # id	saga	points	title
 # Read by bin/scouter. Tab-separated. Do not add spaces around tabs.
 # Main arc: 25 regular capsules @ 340 + the capstone @ 500 = exactly 9000.
-# Filler Arc (B*): optional. 6 @ 150 = 900 bonus, which is how you get OVER 9000.
+# Filler Arc (B*): optional. 10 @ 150 = 1500 bonus, which is how you get OVER 9000.
 00	0	0	Kame House — Setup, Tools & Your Own Repo
 01	0	340	Scouter — Your First Service
 02	0	340	Capsule #9 — Containers
