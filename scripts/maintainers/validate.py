@@ -196,6 +196,28 @@ for cid, *_ in rows:
     if d and not re.search(r"\|\s*\d+\s*(?:[–-]\s*\d+\s*)?(min|h\b|hours|horas)", d.joinpath("README.md").read_text()):
         warn("meta", f"{cid} has no time estimate in its header table")
 
+# --- 9. Unescaped pipes inside table cells ---------------------------------
+# GFM splits a table row on every unescaped `|`, INCLUDING inside a code span.
+# So `redis-cli --scan | head` silently truncates the row on GitHub — the text
+# after the pipe simply disappears. `\|` is the only way to write a literal
+# pipe in a table. Found in the wild twice; see docs/maintainers/build-log.md.
+for md in sorted(ROOT.glob("**/*.md")):
+    if ".git" in md.parts:
+        continue
+    infence = False
+    for n, line in enumerate(md.read_text().split("\n"), 1):
+        if line.startswith("```"):
+            infence = not infence
+            continue
+        if infence or not line.strip().startswith("|"):
+            continue
+        # strip escaped pipes, then look for a pipe inside a surviving code span
+        probe = line.replace(r"\|", "\x00")
+        for span in re.findall(r"`([^`]*)`", probe):
+            if "|" in span:
+                fail("tables", f"{md.relative_to(ROOT)}:{n} unescaped | inside a code "
+                               f"span in a table row — use \\| ({span.strip()[:40]!r})")
+
 # --- report -----------------------------------------------------------------
 print(f"  capsules: {len(rows)}  ({len(bonus_ids)} bonus)   main arc power: {main_total}")
 for w in warns:

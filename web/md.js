@@ -46,8 +46,19 @@ export function inline(src) {
 }
 
 function renderTable(rows) {
+    // GFM treats \| as a LITERAL pipe, not a column separator — it is the only
+    // way to put a pipe inside a table cell, including inside a code span.
+    // Splitting naively on "|" tears `curl ... \| sh` in half and shifts every
+    // cell after it, dropping the last column off the row. Protect it first,
+    // then restore — the same sentinel trick inline() uses for code spans.
+    const PIPE = "\u0002";
     const cells = (line) =>
-        line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+        line
+            .replace(/\\\|/g, PIPE)
+            .replace(/^\s*\|/, "")
+            .replace(/\|\s*$/, "")
+            .split("|")
+            .map((c) => c.trim().split(PIPE).join("|"));
 
     const head = cells(rows[0]);
     let html = "<table><thead><tr>";

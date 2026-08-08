@@ -622,7 +622,7 @@ Requisitos para que eso sea real:
 | Hit ratio cercano a cero | Las claves difieren en cada request (un timestamp o un valor aleatorio en la clave), o el TTL es más corto que el intervalo entre requests. Imprimí las claves. |
 | Datos viejos después de escribir | La invalidación no corre, o borra una clave construida distinto. Usá una sola función compartida para armar claves. |
 | El cache es más lento que la base | Costo de serialización en valores grandes, o un salto de red para una query que tardaba 0,2 ms. No todo merece un cache. |
-| La memoria sigue creciendo | Claves sin TTL. `redis-cli --scan | head` y después `TTL <clave>` — cualquier cosa que devuelva `-1` es inmortal. |
+| La memoria sigue creciendo | Claves sin TTL. `redis-cli --scan \| head` y después `TTL <clave>` — cualquier cosa que devuelva `-1` es inmortal. |
 
 ---
 
