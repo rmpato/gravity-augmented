@@ -91,6 +91,7 @@ only way past 9000.*
 | B8 | **Namek's Five Minutes** — Incident Response & Postmortems | Mitigate before diagnose, severity levels, incident command roles, the first five minutes, status updates with no ETA, blameless postmortems, contributing factors over root cause, sustainable on-call | 25 |
 | B9 | **Babidi's Spell** — Security Beyond Auth | SQL injection and why escaping loses, allowlists for identifiers, SSRF and the cloud metadata service, blocking at dial to defeat DNS rebinding, secret hygiene and rotation, a non-loggable Secret type, govulncheck and reachability | 23 |
 | B10 | **Instant Kamehameha** — Go for People Who Already Program | Implicit interfaces, errors as values, embedding vs inheritance, zero values, slices and their shared backing array, goroutines, `defer`, capitalisation-as-visibility, `go.mod` vs Maven — with a Java column you can ignore | 01 |
+| B11 | **Turtle School** — Go Basics & the Daily Toolchain | The `go` command, `gofmt` with no options, what `go vet` catches that the compiler can't, table-driven tests, modules and `go mod tidy`, the opinionated rules that feel wrong at first, reading panics and compile errors — plus a cheatsheet to keep | 01 |
 
 ---
 

@@ -6,7 +6,7 @@ see the pointers below rather than re-deriving anything.
 ## What this is
 
 **Gravity Augmented** — a course teaching GCP and system design at scale, as 27
-main capsules + 10 bonus, in English and Argentine Spanish. `README.md` is
+main capsules + 11 bonus, in English and Argentine Spanish. `README.md` is
 written for *learners*; `MAINTAINERS.md` is for us. Don't confuse the two when
 editing.
 
@@ -73,7 +73,7 @@ python3 scripts/maintainers/validate.py   # the gate
 
 ## State
 
-27 + 10 capsules, both languages. 23 of 27 exercised against real containers;
+27 + 11 capsules, both languages. 23 of 27 exercised against real containers;
 04 and 26 are design capsules with no stack, B3/B5 are pure Go where the tests
 are the lab. The reference's tags were rebuilt so every one builds.
 

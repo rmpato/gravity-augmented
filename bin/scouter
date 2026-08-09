@@ -91,7 +91,7 @@ normalize_id() { # accepts 3, 03, 3-anything -> 03 ; b1, B1, B1-anything -> B1
 require_id() {
   local id; id="$(normalize_id "$1")"
   manifest | awk -F'\t' -v id="$id" '$1==id{f=1} END{exit !f}' \
-    || die "capsule $id does not exist (main arc 00-26, Filler Arc B1-B10)"
+    || die "capsule $id does not exist (main arc 00-26, Filler Arc B1-B11)"
   printf '%s\n' "$id"
 }
 
@@ -335,7 +335,7 @@ usage() {
     scouter open   <id>     open the capsule in $EDITOR
 
   <id> may be 3, 03, or 03-bulma-blueprints-iac.
-  Filler Arc (optional bonus) capsules are b1 … B10.
+  Filler Arc (optional bonus) capsules are b1 … B11.
 
 EOF
 }

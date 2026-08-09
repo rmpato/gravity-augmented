@@ -27,6 +27,11 @@ snippet is labelled and skippable, and the Go always stands on its own. If your
 background is Python, TypeScript, C# or Kotlin, the same shifts apply; only the
 "before" column changes.
 
+> If Go is one of your *first* languages, start with
+> [B11 · Turtle School](../B11-turtle-school-go-basics/README.md) instead. It
+> teaches the toolchain — `go vet`, `gofmt`, `go test`, modules — and the rules
+> the compiler enforces, which this capsule assumes you already have.
+
 > If you already write Go, skip this and go to
 > [B5 · Afterimage Technique](../B5-afterimage-go-concurrency/README.md), which
 > covers the concurrency you'll actually need.

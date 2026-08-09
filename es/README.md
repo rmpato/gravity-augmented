@@ -73,6 +73,7 @@ obligatorios — pero los que tienen entrenamiento de verdad valen la pena.
 | B8 | **Los cinco minutos de Namek** — incidentes y postmortems | nunca estuviste de guardia, o sí y fue horrible | 25 |
 | B9 | **El hechizo de Babidi** — seguridad más allá de auth | sabés qué es un JWT pero no qué es SSRF | 23 |
 | B10 | **Kamehameha Instantáneo** — Go para quien ya programa | programás en otro lenguaje y la sintaxis de Go te estorba | 01 |
+| B11 | **Escuela de la Tortuga** — Go desde cero y las herramientas | Go es uno de tus primeros lenguajes y `go vet` es un misterio | 01 |
 
 Valen **150** cada una. El arco principal termina exactamente en 9000 — el Arco
 de Relleno es literalmente cómo pasás de **9000**.
@@ -237,7 +238,7 @@ de Linux, no en `/mnt/c`).
 |---|---|
 | [`docs/setup.md`](docs/setup.md) | El camino corto: instalá lo que pide la Cápsula 00 y verificalo. |
 | [`docs/tools.md`](docs/tools.md) | Todas las herramientas recomendadas, con equivalentes en macOS / Linux / Windows-WSL2. Ghostty, lazydocker, Oh My Zsh, direnv, fzf, y por qué cada una. |
-| [`docs/saga-map.md`](docs/saga-map.md) | Las 37 cápsulas, una línea cada una. El mapa. |
+| [`docs/saga-map.md`](docs/saga-map.md) | Las 38 cápsulas, una línea cada una. El mapa. |
 | [`docs/scouter-codex.md`](docs/scouter-codex.md) | Nombre clave de DBZ → término real de ingeniería. Leelo si algún nombre te confunde. |
 | [`docs/gcp-safety.md`](docs/gcp-safety.md) | Barreras de facturación, free tier, disciplina de teardown. Hacelo antes de tocar la nube. |
 | [`docs/engineering-standards.md`](docs/engineering-standards.md) | Las prácticas que atraviesan todas las cápsulas, en un solo lugar. Llevátelas al trabajo. |

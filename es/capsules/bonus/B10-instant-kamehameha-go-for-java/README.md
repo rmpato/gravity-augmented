@@ -26,6 +26,11 @@ Java está marcado y es salteable, y el Go siempre se sostiene solo. Si venís d
 Python, TypeScript, C# o Kotlin aplican los mismos cambios de chip; lo único que
 cambia es la columna del "antes".
 
+> Si Go es uno de tus *primeros* lenguajes, arrancá por
+> [B11 · Escuela de la Tortuga](../B11-turtle-school-go-basics/README.md). Enseña
+> el toolchain — `go vet`, `gofmt`, `go test`, módulos — y las reglas que impone
+> el compilador, que esta cápsula da por sabidas.
+
 > Si ya escribís Go, saltá esto y andá a
 > [B5 · Imagen Residual](../B5-afterimage-go-concurrency/README.md), que cubre
 > la concurrencia que vas a necesitar de verdad.

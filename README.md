@@ -60,6 +60,7 @@ somebody actually trains are worth it.
 | B8 | **Namek's Five Minutes** — incident response & postmortems | you've never been on-call, or you have and it was awful | 25 |
 | B9 | **Babidi's Spell** — security beyond auth | you know what a JWT is but not what SSRF is | 23 |
 | B10 | **Instant Kamehameha** — Go for people who already program | you write another language and Go's syntax is in your way | 01 |
+| B11 | **Turtle School** — Go basics & the daily toolchain | Go is one of your first languages, and `go vet` is a mystery | 01 |
 
 They're worth **150** each. The main arc tops out at exactly 9000 — the Filler
 Arc is literally how you get **over 9000**.
@@ -219,7 +220,7 @@ users need to know (the big one: keep your code in the Linux filesystem, not
 |---|---|
 | [`docs/setup.md`](docs/setup.md) | The short path: install what Capsule 00 needs and verify it. |
 | [`docs/tools.md`](docs/tools.md) | Every recommended tool, with macOS / Linux / Windows-WSL2 equivalents. Ghostty, lazydocker, Oh My Zsh, direnv, fzf, and why each one. |
-| [`docs/saga-map.md`](docs/saga-map.md) | All 37 capsules, one line each. The map. |
+| [`docs/saga-map.md`](docs/saga-map.md) | All 38 capsules, one line each. The map. |
 | [`docs/scouter-codex.md`](docs/scouter-codex.md) | DBZ codename → real engineering term. Read this if a name confuses you. |
 | [`docs/gcp-safety.md`](docs/gcp-safety.md) | Billing guardrails, free tier, teardown discipline. Do this before any cloud work. |
 | [`docs/engineering-standards.md`](docs/engineering-standards.md) | The practices threaded through every capsule, in one place. Take these to work. |
