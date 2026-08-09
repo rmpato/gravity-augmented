@@ -351,7 +351,17 @@ function route() {
     const h = location.hash.replace(/^#\/?/, "");
     if (!h) return renderHome();
     if (h.startsWith("doc/")) return renderDocPage(h.slice(4));
-    return renderCapsule(h.toUpperCase().startsWith("B") ? h.toUpperCase() : h);
+
+    const id = h.toUpperCase().startsWith("B") ? h.toUpperCase() : h;
+    if (byId(id)) return renderCapsule(id);
+
+    // Not a capsule id. A capsule's own table of contents links to its headings
+    // as plain "#section" fragments, and those land here — routing them would
+    // throw the reader back to the home page mid-read. Scroll instead.
+    const target = document.getElementById(h);
+    if (target) return target.scrollIntoView();
+
+    return renderHome();
 }
 
 // --- boot -------------------------------------------------------------------

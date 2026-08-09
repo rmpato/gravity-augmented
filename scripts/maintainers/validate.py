@@ -13,6 +13,7 @@ docs/maintainers/build-log.md.
 import pathlib
 import re
 import sys
+import unicodedata
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MAIN_SAGAS = 5
@@ -160,6 +161,49 @@ for md in sorted(ROOT.glob("**/*.md")):
             continue
         if not (md.parent / t).resolve().exists():
             fail("links", f"{md.relative_to(ROOT)} -> {t}")
+
+# --- 5b. In-page anchors resolve to a heading in the same file --------------
+# A "#section" link is rendered twice: by GitHub, and by web/md.js in the local
+# reader. They must agree, so there is exactly one slug rule and it lives here
+# and in web/md.js. Keep the two in step.
+#
+# GitHub's rule (github-slugger): lowercase, drop everything that isn't a
+# letter, digit, combining mark, connector punctuation, space or hyphen, then
+# turn EACH space into a hyphen. Two consequences that are easy to get wrong:
+# a stripped em dash leaves two spaces and therefore "--", and accented letters
+# survive. web/md.js got both wrong until 2026-08-09; see the reader fix.
+ANCHOR = re.compile(r"\[[^\]]*\]\(#([^)]+)\)")
+HEADING = re.compile(r"^#{1,6}\s+(.*)$")
+
+
+def slug(text: str) -> str:
+    out = []
+    for ch in text.strip().lower():
+        if ch.isspace():
+            out.append("-")
+        elif ch.isalpha() or ch.isdigit() or ch == "-" or unicodedata.category(ch) in ("Mn", "Mc", "Me", "Pc"):
+            out.append(ch)
+    return "".join(out)
+
+
+for md in sorted(ROOT.glob("**/*.md")):
+    if ".git" in md.parts:
+        continue
+    text = md.read_text()
+    ids, infence = set(), False
+    for line in text.split("\n"):
+        if line.startswith("```"):
+            infence = not infence
+            continue
+        if infence:
+            continue
+        h = HEADING.match(line)
+        if h:
+            ids.add(slug(h.group(1)))
+    for target in ANCHOR.findall(text):
+        if target not in ids:
+            fail("anchors", f"{md.relative_to(ROOT)} -> #{target} matches no heading "
+                            f"(GitHub and the reader both slug it differently)")
 
 # --- 6. Surfaces that must list every capsule -------------------------------
 def row_ids(path: pathlib.Path, pattern: str):
