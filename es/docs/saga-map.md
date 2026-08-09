@@ -91,6 +91,7 @@ de power cada uno, y la única forma de pasar los 9000.*
 | B8 | **Los cinco minutos de Namek** — Respuesta a incidentes y postmortems | Mitigar antes de diagnosticar, niveles de severidad, roles de incident command, los primeros cinco minutos, status updates sin ETA, postmortems sin culpa, factores contribuyentes en vez de root cause, guardias sostenibles | 25 |
 | B9 | **El hechizo de Babidi** — Seguridad más allá de auth | SQL injection y por qué escapar pierde, allowlists para identificadores, SSRF y el metadata service, bloquear en el dial para frenar DNS rebinding, higiene y rotación de secretos, un tipo Secret que no se puede loguear, govulncheck y reachability | 23 |
 | B10 | **Kamehameha Instantáneo** — Go para quien ya programa | Interfaces implícitas, errores como valores, embedding vs herencia, zero values, slices y su array compartido, goroutines, `defer`, mayúscula-como-visibilidad, `go.mod` vs Maven — con una columna Java que podés ignorar | 01 |
+| B11 | **Escuela de la Tortuga** — Go desde cero y las herramientas | El comando `go`, `gofmt` sin opciones, qué agarra `go vet` que el compilador no puede, table-driven tests, módulos y `go mod tidy`, las reglas opinionadas que al principio se sienten mal, cómo leer panics y errores de compilación — más un cheatsheet para guardar | 01 |
 
 ---
 

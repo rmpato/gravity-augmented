@@ -101,12 +101,18 @@ than a gap where someone re-proposes the same thing in six months.
 **Status:** `proposed` → `accepted` → `in progress` → `shipped`, or `declined` /
 `deferred`.
 
+**Ids here are not reservations.** A shipped capsule always takes the next free
+id, and the proposals below shift up. **Shifted 2026-08-08**: B11 went to
+*Turtle School — Go Basics & the Daily Toolchain*, so the five entries that
+were B11–B15 are now B12–B16. Shipped ids never move (they live in a learner's
+`.scouter/progress`); backlog ids are just labels until something is written.
+
 **Tier 1** = would genuinely improve the course. **Tier 2** = real, but narrower
 or harder to make hands-on.
 
 ---
 
-### B11 · The Price of Power — cloud cost engineering
+### B12 · The Price of Power — cloud cost engineering
 **Status:** proposed · **Tier:** 1 · **Raised:** 2026-08-06 · **Decision:** —
 
 **Pitch.** Teach the skill that Capsule 26 makes you use once and never explains.
@@ -130,14 +136,14 @@ estimation.
 
 ---
 
-### B12 · Saibamen — testing strategy
+### B13 · Saibamen — testing strategy
 **Status:** proposed · **Tier:** 1 · **Raised:** 2026-08-06 · **Decision:** —
 
 **Pitch.** Saibamen are grown to test fighters before the real one arrives.
 
 **Why.** The thinnest genuine gap. The course preaches good practice, puts
 `-race` in the Makefile from Capsule 00, writes a contract test in 22 and k6
-scenarios in 09 — but never teaches *what to test where*. Only 2 of 37 capsules
+scenarios in 09 — but never teaches *what to test where*. Only 2 of 38 capsules
 mention integration testing at all.
 
 **Would cover.** The pyramid and when it lies; fakes vs mocks vs stubs (the
@@ -153,7 +159,7 @@ plus a build tag enough, and more in keeping with the course's no-install bias?
 
 ---
 
-### B13 · Porunga or Shenron — choosing a datastore
+### B14 · Porunga or Shenron — choosing a datastore
 **Status:** proposed · **Tier:** 1 · **Raised:** 2026-08-06 · **Decision:** —
 
 **Pitch.** Earth's dragon balls grant one wish; Namek's grant three, but you
@@ -176,7 +182,7 @@ concept capsule with a decision-tree exercise, closer to B6 than to B4.
 
 ---
 
-### B14 · Sacred Water — CI/CD and promotion
+### B15 · Sacred Water — CI/CD and promotion
 **Status:** proposed · **Tier:** 1 · **Raised:** 2026-08-06 · **Decision:** —
 
 **Pitch.** Korin makes you earn the water before you're allowed to ascend.
@@ -198,7 +204,7 @@ Actions as the worked example.
 
 ---
 
-### B15 · Sensing Ki — profiling
+### B16 · Sensing Ki — profiling
 **Status:** proposed · **Tier:** 1 · **Raised:** 2026-08-06 · **Decision:** —
 
 **Pitch.** Capsule 25 is the Scouter Mk II — a device that tells you *that*

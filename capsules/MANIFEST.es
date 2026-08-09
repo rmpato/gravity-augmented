@@ -38,3 +38,4 @@ B7	El Registro de Kami — IAM, service accounts y Workload Identity
 B8	Los cinco minutos de Namek — Respuesta a incidentes y postmortems
 B9	El hechizo de Babidi — Seguridad más allá de auth
 B10	Kamehameha Instantáneo — Go para quien ya programa
+B11	Escuela de la Tortuga — Go desde cero y las herramientas del día a día
