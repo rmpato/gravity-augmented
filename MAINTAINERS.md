@@ -65,6 +65,21 @@ Step-by-step procedures live in
 Plus a table of **what a capsule touches** — every file, what breaks if it is
 wrong, and whether anything catches it.
 
+### The public site (`site/`)
+
+A static GitHub Pages site, separate from the local reader in `web/`. No build
+step; open `site/index.html` from disk to preview.
+
+- `site/index.html` — the landing page. Saga cards are static HTML.
+- `site/recap/` — the arc recap: one page per main-arc capsule (idea, diagrams,
+  traps, drill). Content lives in `site/recap/data/saga-N.js`; the capsule
+  list in `data/course.js` was generated from `capsules/MANIFEST`.
+- **Changing a capsule's teaching means checking its recap too.** Nothing
+  checks this automatically, and `validate.py` doesn't look at `site/`.
+- Publishing is manual: `.github/workflows/pages.yml` runs only on
+  `workflow_dispatch`. Pages must be set to source "GitHub Actions" once.
+- English only for now.
+
 ---
 
 ## Versioning
