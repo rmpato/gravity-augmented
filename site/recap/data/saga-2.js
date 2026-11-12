@@ -206,10 +206,10 @@ GA.recap({
   <text class="sm start" x="510" y="112">every entry</text>
   <text class="sm start" x="510" y="130">checked,</text>
   <text class="sm start" x="510" y="148">most skipped</text>
-  <text class="b good" x="160" y="260">16 buffers · 0.077 ms</text>
-  <text class="b bad" x="480" y="260">90 buffers · 0.290 ms</text>
+  <text class="b good" x="160" y="260">13 buffers · 0.040 ms</text>
+  <text class="b bad" x="480" y="260">83 buffers · 0.148 ms</text>
 </svg>`,
-      caption: "Query: <code>WHERE fighter_id = 42 ORDER BY recorded_at DESC LIMIT 10</code>. On Postgres 16 both plans say <code>Index Scan</code> with <code>Index Cond: (fighter_id = 42)</code>; only the <code>Buffers</code> line shows the extra work. Numbers are the capsule's measurement on 200k rows. With no usable index it was 7.6 ms.",
+      caption: "Query: <code>WHERE fighter_id = 42 ORDER BY recorded_at DESC LIMIT 10</code>. On Postgres 16 both plans say <code>Index Scan</code> with <code>Index Cond: (fighter_id = 42)</code>; only the <code>Buffers</code> line shows the extra work. Numbers are the capsule's measurement on the 2 million rows Step 1 loads. With no usable index it was about 29 ms. Your exact numbers will differ, but not the shape.",
     },
     {
       title: "OFFSET vs keyset at page 25,000",
@@ -261,8 +261,8 @@ GA.recap({
   ],
   numbers: [
     { value: "~4 reads", label: "to find one row in 10M, vs 10,000,000", note: "Index O(log n) vs Seq Scan O(n)." },
-    { value: "~80×", label: "7.6 ms → 0.094 ms", note: "One line of DDL, measured on 200k rows. The gap widens as the table grows." },
-    { value: "16 vs 90", label: "buffers, right vs reversed column order", note: "Same ten rows, nearly 6× the pages read." },
+    { value: "~700×", label: "29 ms → 0.040 ms", note: "One line of DDL, measured on 2 million rows. The gap widens as the table grows." },
+    { value: "13 vs 83", label: "buffers, right vs reversed column order", note: "Same ten rows, over 6× the pages read." },
     { value: "~5–10%", label: "of the table: where Seq Scan wins", note: "Rough rule for when the planner should ignore your index." },
   ],
   traps: [

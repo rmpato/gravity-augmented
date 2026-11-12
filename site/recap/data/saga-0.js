@@ -474,7 +474,7 @@ GA.recap({
   <text class="xs start" x="460" y="220">rewrites the file</text>
   <text class="mono sm start" x="20" y="264">~ update in place</text><text class="mono sm start" x="190" y="264">-/+ destroy and recreate</text><text class="mono sm start" x="410" y="264">+ create</text><text class="mono sm start" x="510" y="264">- destroy</text>
 </svg>`,
-      caption: "This is what the plans print when the lab is run (Terraform 1.15, local provider 2.5). The capsule's comment expects <code>replica_count=3</code> to show <code>~</code> update in place; the local provider can't update a file in place, so it shows <code>-/+</code> as well. The lesson holds: <code>-/+</code> on a database would be the blocked PR.",
+      caption: "What the plans print when you run the lab (Terraform 1.15). Changing <code>replica_count</code> <em>looks</em> like an in-place edit, but <code>local_file</code> has no edit operation, so it's <code>-/+</code> too. The provider decides <code>~</code> versus <code>-/+</code> attribute by attribute, and the <code># forces replacement</code> line tells you which. On a database, that line is the blocked PR.",
     },
     {
       title: "The compose stack: service names are hostnames",

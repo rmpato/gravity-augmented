@@ -81,7 +81,7 @@ GA.recap({
       svg: `<svg class="dg" viewBox="0 0 640 280" role="img" aria-label="Left: in a one-CPU container on a ten-core host, Go starts ten threads that all compete for one core of quota. Right: with GOMAXPROCS set to one, a single thread matches the quota">
   <rect class="zone" x="8" y="8" width="304" height="264" rx="12"/>
   <rect class="zone" x="328" y="8" width="304" height="264" rx="12"/>
-  <text class="b" x="160" y="30">Default (Go before 1.25)</text>
+  <text class="b" x="160" y="30">Default (go.mod older than 1.25)</text>
   <text class="b" x="480" y="30">GOMAXPROCS=1 / automaxprocs</text>
   <text class="sm mono" x="160" y="56">num_cpu: 10  gomaxprocs: 10</text>
   <text class="sm mono" x="480" y="56">num_cpu: 10  gomaxprocs: 1</text>
@@ -111,7 +111,7 @@ GA.recap({
   <text class="sm good" x="480" y="226">threads match the cgroup limit</text>
   <text class="sm good" x="480" y="248">tail latency stops paying for it</text>
 </svg>`,
-      caption: "<code>runtime.NumCPU()</code> asks the OS and gets the <em>host's</em> count, not the container's limit, so both numbers stay at 10 on the left. The fix changes only <code>gomaxprocs</code>. Compare the p99 under concurrent load, not the mean. Go 1.25 made this automatic; the JVM and Node have their own versions of the same bug.",
+      caption: "<code>runtime.NumCPU()</code> asks the OS and gets the <em>host's</em> count, not the container's limit, so both numbers stay at 10 on the left. The fix changes only <code>gomaxprocs</code>. Compare the p99 under concurrent load, not the mean. Go 1.25 made this automatic, but only for modules whose <code>go.mod</code> says <code>go 1.25</code> or later, and it never goes below 2. If the lab shows <code>gomaxprocs: 2</code>, that's the fix working; <code>GODEBUG=containermaxprocs=0</code> brings the trap back. The JVM and Node have their own versions of the same bug.",
     },
   ],
   concepts: [
