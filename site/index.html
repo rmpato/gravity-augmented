@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gravity Augmented</title>
+  <meta name="description" content="A hands-on training arc for Google Cloud and system design at scale. 27 capsules, local-first, in English and Spanish.">
+  <meta property="og:title" content="Gravity Augmented">
+  <meta property="og:description" content="A hands-on training arc for Google Cloud and system design at scale.">
+  <link rel="stylesheet" href="assets/site.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23f36b21' stroke='%23182238' stroke-width='3'/><circle cx='16' cy='16' r='3' fill='%23ef5b5b'/></svg>">
+  <style>.mute { color: var(--muted); }</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="index.html"><span class="seal"></span>Gravity Augmented</a>
+      <nav class="topnav">
+        <a href="#sagas">Sagas</a>
+        <a href="#how">How it works</a>
+        <a href="#start">Start</a>
+        <a href="recap/">Arc recap</a>
+        <a class="cta" href="https://github.com/rmpato/gravity-augmented">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <p class="eyebrow">GCP · system design at scale</p>
+          <h1 class="display">Gravity <span>Augmented</span></h1>
+          <p class="lede">Real systems get heavy. Traffic multiplies, data outgrows one machine, one slow dependency takes
+            down five services. This course turns that weight up slowly, one <b>Capsule</b> at a time, until load that
+            would have crushed you at the start feels like normal gravity.</p>
+          <div class="actions">
+            <a class="btn primary" href="https://github.com/rmpato/gravity-augmented/blob/main/capsules/00-kame-house-setup/README.md">Start with Capsule 00</a>
+            <a class="btn" href="recap/">Review an arc</a>
+          </div>
+          <p class="quote">"The gravity in here is 100 times Earth's normal. If you can move under this, you can move anywhere."
+            <cite>Vegeta, training in the Gravity Chamber</cite></p>
+        </div>
+
+        <div class="card scouter-card" aria-label="How power level adds up across the sagas">
+          <div class="row"><span class="label">Power level, full arc</span><span class="value">9000</span></div>
+          <div class="meter"><i style="width:100%"></i></div>
+          <ul class="saga-bars">
+            <li><b>0 · Kame House</b><span>1,360</span></li>
+            <li><b>1 · Saiyan Saga</b><span>1,700</span></li>
+            <li><b>2 · Namek Saga</b><span>1,360</span></li>
+            <li><b>3 · Frieza Saga</b><span>1,360</span></li>
+            <li><b>4 · Cell Saga</b><span>1,360</span></li>
+            <li><b>5 · Buu Saga</b><span>1,860</span></li>
+            <li><b>Filler Arc</b><span>+1,500 → over 9000</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <p class="eyebrow">What you walk out with</p>
+        <h2 class="display">Three things, built commit by commit</h2>
+        <div class="outcomes">
+          <div class="card">
+            <h3>GCP, essentials → solid intermediate</h3>
+            <p>Projects, IAM, Cloud Run, Cloud SQL, Memorystore, Pub/Sub, Cloud Load Balancing, Cloud CDN, Cloud
+              Monitoring, Artifact Registry, Terraform, and the judgement to pick between them.</p>
+          </div>
+          <div class="card">
+            <h3>System design, at least intermediate</h3>
+            <p>Caching, sharding, replication, consistency, queues and delivery semantics, backpressure, service
+              boundaries, deploys, observability, and how to defend a design out loud.</p>
+          </div>
+          <div class="card">
+            <h3>A real system you built yourself</h3>
+            <p><b>Scouter</b> starts as one Go binary with an in-memory map. It ends as a set of services with a database,
+              a cache, a CDN, a message bus, traffic-split deploys and SLOs, all in your own repo.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="sagas">
+      <div class="wrap">
+        <p class="eyebrow">The training arc</p>
+        <h2 class="display">27 capsules, six sagas, in order</h2>
+        <p class="sub">Each capsule is one sitting of 45–95 minutes. Later capsules break what earlier ones built, on purpose,
+          so you go in order. Finished a saga? Click it to open its recap.</p>
+        <div class="saga-grid">
+      <a class="card saga-card" href="recap/#/saga/0">
+        <span class="num">Saga 0 · 00–04 · 1,360 power</span>
+        <h3 class="display">Kame House</h3>
+        <p class="theme">Foundations</p>
+        <p>Get a service running, containerized and reproducible, and understand what GCP actually is before touching it.</p>
+        <ul><li><b>00</b>Kame House</li><li><b>01</b>Scouter</li><li><b>02</b>Capsule #9</li><li><b>03</b>Bulma&#x27;s Blueprints</li><li><b>04</b>Kami&#x27;s Lookout</li></ul>
+      </a>
+      <a class="card saga-card" href="recap/#/saga/1">
+        <span class="num">Saga 1 · 05–09 · 1,700 power</span>
+        <h3 class="display">Saiyan Saga</h3>
+        <p class="theme">Scaling & the edge</p>
+        <p>Make one machine faster, then stop and make many machines instead, then put something sensible in front of them.</p>
+        <ul><li><b>05</b>Kaio-ken</li><li><b>06</b>Multi-Form</li><li><b>07</b>Korin&#x27;s Tower</li><li><b>08</b>King Yemma&#x27;s Desk</li><li><b>09</b>Hyperbolic Time Chamber</li></ul>
+      </a>
+      <a class="card saga-card" href="recap/#/saga/2">
+        <span class="num">Saga 2 · 10–13 · 1,360 power</span>
+        <h3 class="display">Namek Saga</h3>
+        <p class="theme">Data</p>
+        <p>Where the hard problems actually live: schemas, indexes, sharding, replicas and the consistency you trade away.</p>
+        <ul><li><b>10</b>The Grand Elder&#x27;s Archive</li><li><b>11</b>Dragon Radar</li><li><b>12</b>Seven Dragon Balls</li><li><b>13</b>Namekian Fusion</li></ul>
+      </a>
+      <a class="card saga-card" href="recap/#/saga/3">
+        <span class="num">Saga 3 · 14–17 · 1,360 power</span>
+        <h3 class="display">Frieza Saga</h3>
+        <p class="theme">Latency</p>
+        <p>Getting fast, and staying fast when things go wrong: caches, CDNs, timeouts and backpressure.</p>
+        <ul><li><b>14</b>Senzu Bean</li><li><b>15</b>Ginyu Force Tactics</li><li><b>16</b>Instant Transmission</li><li><b>17</b>Ki Suppression</li></ul>
+      </a>
+      <a class="card saga-card" href="recap/#/saga/4">
+        <span class="num">Saga 4 · 18–21 · 1,360 power</span>
+        <h3 class="display">Cell Saga</h3>
+        <p class="theme">Async</p>
+        <p>Stop making everything a synchronous request: queues, delivery semantics, fan-out and events.</p>
+        <ul><li><b>18</b>King Kai&#x27;s Telepathy</li><li><b>19</b>Cell&#x27;s Absorption</li><li><b>20</b>Spirit Bomb</li><li><b>21</b>Trunks&#x27; Time Machine</li></ul>
+      </a>
+      <a class="card saga-card" href="recap/#/saga/5">
+        <span class="num">Saga 5 · 22–26 · 1,860 power</span>
+        <h3 class="display">Buu Saga</h3>
+        <p class="theme">Operating it</p>
+        <p>Making it something a team can run: boundaries, BFFs, safe deploys, SLOs, and a capstone you defend out loud.</p>
+        <ul><li><b>22</b>Fusion Dance</li><li><b>23</b>The Great Saiyaman</li><li><b>24</b>Ginyu&#x27;s Body Change</li><li><b>25</b>Scouter Mk. II</li><li><b>26</b>Tournament of Power</li></ul>
+      </a>
+      <div class="card saga-card filler">
+        <span class="num">Filler Arc · optional · 150 each</span>
+        <h3 class="display">The filler episodes worth watching</h3>
+        <p class="theme">Fundamentals the main arc leans on</p>
+        <ul><li><b>B1</b>REST API Design Essentials</li><li><b>B2</b>HTTP &amp; Networking Essentials</li><li><b>B3</b>Identity, Auth &amp; Access</li><li><b>B4</b>SQL Essentials</li><li><b>B5</b>Concurrency in Go</li><li><b>B6</b>Back-of-the-Envelope Estimation</li><li><b>B7</b>GCP IAM, Service Accounts &amp; Workload Identity</li><li><b>B8</b>Incident Response &amp; Postmortems</li><li><b>B9</b>Security Beyond Auth</li><li><b>B10</b>Go for People Who Already Program</li></ul>
+      </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="how">
+      <div class="wrap">
+        <p class="eyebrow">How a capsule works</p>
+        <h2 class="display">The same loop, every time</h2>
+        <p class="sub">About 15 minutes of reading, 30 of hands-on and 5 of writing it down. Nothing requires you to hold the
+          previous week in your head.</p>
+        <ol class="steps">
+          <li><b>Read the concept</b><span>The real production problem first, then the actual teaching.</span></li>
+          <li><b>Do the lab</b><span>Numbered steps in <em>your</em> repo. Type the code; don't paste it.</span></li>
+          <li><b>Break it on purpose</b><span>Kill the container, fire 10× traffic, unplug the cache. That failure is the lesson.</span></li>
+          <li><b>Pass the checkpoint</b><span>Commands with expected output. Passing is what "done" means.</span></li>
+          <li><b>Log it</b><span>Commit in <code>gravity-chamber</code>, then <code>scouter done NN</code>.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <p class="eyebrow">Three repos</p>
+        <h2 class="display">This one teaches, yours trains, one is the answer key</h2>
+        <div class="repos">
+          <div class="card">
+            <p class="who">The curriculum</p>
+            <h3>gravity-augmented</h3>
+            <p>This repo. Read-only for you: the capsules, the reader, and the Scouter progress tracker.</p>
+          </div>
+          <div class="card">
+            <p class="who">Yours</p>
+            <h3>gravity-chamber</h3>
+            <p>You create it in Capsule 00. Every lab adds a commit. By Capsule 25 it's a multi-service system you can put on a CV.</p>
+          </div>
+          <div class="card">
+            <p class="who">The answer key</p>
+            <h3>gravity-chamber-reference</h3>
+            <p>A working build tagged per capsule. <code>git diff capsule-13 capsule-14</code> shows exactly what a capsule asks
+              for. Reach for it after you've been properly stuck, not before.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="start">
+      <div class="wrap two-col">
+        <div>
+          <p class="eyebrow">Start here</p>
+          <h2 class="display">Clone, check, read</h2>
+          <p class="sub">Python 3 standard library and a POSIX shell. No <code>pip install</code>, no <code>npm install</code>, no build step.</p>
+<pre><code>git clone https://github.com/rmpato/gravity-augmented
+cd gravity-augmented
+
+./bin/doctor          # what's missing on your machine
+./bin/serve           # the reader on localhost:8420
+./bin/scouter next    # what to do now</code></pre>
+          <p style="margin-top:16px;color:var(--muted)">Prefer Spanish? Every capsule exists in Argentine Spanish too:
+            <a href="https://github.com/rmpato/gravity-augmented/blob/main/es/README.md">leer en español</a>.</p>
+        </div>
+        <div class="card recap-cta">
+          <p class="eyebrow">Arc recap</p>
+          <h2 class="display">Finishing a capsule is not learning it</h2>
+          <p>Without retrieval you lose most of it within a week, and rereading barely helps. <code>scouter review</code> asks you
+            to recall each capsule again at 3, 7 and 21 days.</p>
+          <p>When you close out a saga, the recap gives every capsule one page: the idea in plain words, a diagram of the
+            mechanism, the traps, and a drill to answer from memory.</p>
+          <p style="margin-top:18px"><a class="btn primary" href="recap/">Open the arc recap</a></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap two-col">
+        <div>
+          <p class="eyebrow">Cost</p>
+          <h2 class="display">This will not surprise you with a bill</h2>
+          <p class="sub" style="margin-bottom:0">Every lab runs locally first: Docker, Postgres, Redis, and the Pub/Sub and
+            Firestore emulators. Where real GCP teaches something local tooling can't, it's a clearly fenced, free-tier,
+            optional section with teardown at the end, and you set up a budget alert before your first <code>gcloud</code>
+            command.</p>
+        </div>
+        <div class="card note">
+          <p><b>First release.</b> The code is verified: every Go snippet compiles, every embedded calculation was executed, and
+            the labs were run against real containers rather than just written. What hasn't been tested is the teaching. If a
+            step assumes something it never told you, that's a bug, and it's the most useful thing you can
+            <a href="https://github.com/rmpato/gravity-augmented/issues">send back</a>.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>Gravity Augmented: a training arc for GCP and system design.</span>
+      <span><a href="recap/">Arc recap</a> · <a href="https://github.com/rmpato/gravity-augmented">GitHub</a></span>
+    </div>
+  </footer>
+</body>
+</html>
