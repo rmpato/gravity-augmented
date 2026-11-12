@@ -363,6 +363,22 @@ func (r *Ranker) HandleVersioned(ctx context.Context, e PowerRecorded) error {
 }
 ```
 
+Two things changed besides the `WHERE`, and both are deliberate. First,
+`total_power` is now **set**, not added to: a version check only works for "set
+to this state" updates (drill 5), because a running total can't ignore an old
+event without losing it. So in this variant the column holds the fighter's
+*latest* power (the name is left over from Step 1) and `reading_count` stays
+at 1. If you need a real total, that's a delta, and deltas need Step 2's
+processed-events table.
+
+Second, the version is `recorded_at` in nanoseconds, **not** the `"version"`
+field in the event JSON, which is Capsule 18's *schema* version. That matters
+if you reuse Step 1's hand-written event to try this: it has no `recorded_at`,
+so Go decodes the zero time, `UnixNano()` returns a huge negative number, and
+against the row Step 2 left behind (`last_version = 0`) the update silently
+matches nothing. Test with events from the real publisher, or add
+`"recorded_at":"2026-01-01T00:00:00Z"` to the JSON.
+
 Test it properly — this is a test worth having in a real codebase:
 
 **`internal/events/ranker_test.go`**
@@ -429,7 +445,8 @@ type PermanentError struct{ Err error }
 func (e PermanentError) Error() string { return "permanent: " + e.Err.Error() }
 func (e PermanentError) Unwrap() error { return e.Err }
 
-// in the Receive callback:
+// in the Receive callback (dlq := client.Topic("power-readings-dlq"),
+// created once, next to sub):
 	if err := handle(ctx, e); err != nil {
 		var perm PermanentError
 		if errors.As(err, &perm) {
@@ -438,8 +455,19 @@ func (e PermanentError) Unwrap() error { return e.Err }
 			// now instead of burning 5 attempts.
 			log.Error("permanent failure, dead-lettering",
 				"event_id", e.EventID, "err", err)
-			m.Ack()               // ack the original…
-			_ = dlq.Publish(ctx, m) // …after copying it aside
+			// Copy it aside FIRST, and wait for the broker to confirm.
+			// Ack first and a failed publish loses the message for good.
+			res := dlq.Publish(ctx, &pubsub.Message{
+				Data:       m.Data,
+				Attributes: map[string]string{"error": err.Error()},
+			})
+			if _, perr := res.Get(ctx); perr != nil {
+				log.Error("dead-letter publish failed, nacking",
+					"event_id", e.EventID, "err", perr)
+				m.Nack() // redelivered; maxDeliveryAttempts is the backstop
+				return
+			}
+			m.Ack() // the copy is safe; now let go of the original
 			return
 		}
 		// Transient: database timeout, cache down, network blip. Retry.

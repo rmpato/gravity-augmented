@@ -143,7 +143,7 @@ and it's the reason "one global IP" is possible at all.
 
 ## Lab
 
-### Step 1 — see the algorithms differ
+### Step 1 — round robin, the baseline
 
 Build on Capsule 06's setup. Replace **`deploy/nginx.conf`**:
 
@@ -208,7 +208,7 @@ Roughly 10/10/10.
 Now mix slow and fast requests. `/train` from Capsule 05 is your slow endpoint.
 
 ```bash
-# 6 slow requests in the background — these will pin some backends
+# 6 slow requests in the background — these keep some backends busy
 for i in $(seq 1 6); do
   curl -s -o /dev/null "localhost:8080/train?rounds=3000000" &
 done
@@ -224,12 +224,18 @@ wait
 ```
 
 > Reuse the `ROUNDS` you calibrated in Capsule 05 and multiply by ~15 — the
-> point here is a request slow enough that you can *watch* the imbalance, not a
-> specific number. On ARM, 3,000,000 rounds is only ~300 ms and the difference
-> between round-robin and `least_conn` stays invisible.
+> point here is a request that keeps a backend busy for a few seconds while
+> the fast ones run, not a specific number. On ARM, 3,000,000 rounds is only
+> ~300 ms: the slow requests finish during the `sleep 1`, before a single fast
+> request is sent, and you measure nothing. If your "slow" requests come back in
+> milliseconds, you went over the `rounds` cap and silently got the default
+> (Capsule 05).
 
-Some fast requests took far longer than they should have — round robin sent them
-to a backend already busy with a hash chain. Note the worst times.
+Note the five worst times — they are your round-robin baseline for Step 3. The
+intuition says some of them should be terrible, because round robin keeps
+handing fast requests to backends that are busy with a hash chain. Write down
+what you actually got, not what the intuition predicts; whether it holds is
+exactly what Step 3 tests.
 
 ### Step 3 — switch to least connections
 
@@ -529,7 +535,7 @@ instance specifically is broken."
 | All traffic to one backend | nginx resolved `scouter` once at startup. Restart the LB after scaling, or use a `resolver` with a variable in `proxy_pass`. |
 | `upstream timed out` on `/train` | `proxy_read_timeout` is shorter than the request. Raise it or lower `rounds`. |
 | `502` immediately on every request | Backends aren't up yet, or the port is wrong. `docker compose logs scouter`. |
-| `least_conn` makes no visible difference | Your requests are all the same cost. The whole point is variable cost — make sure the slow requests are actually running. |
+| `least_conn` makes no visible difference | Expected at this scale — Step 3 explains why. Just rule out the trivial cause first: if the "slow" requests return in milliseconds, `rounds` went over the cap and fell back to the default (Capsule 05), so nothing was busy at all. |
 | nginx won't start | Syntax. `docker compose exec lb nginx -t` prints the exact line. |
 
 ---
@@ -542,7 +548,7 @@ git add -A
 git commit -m "feat(deploy): nginx load balancer with health checks and draining
 
 Capsule 07. Compared round-robin vs least_conn under mixed request costs —
-difference shows only in the tail. Measured failover detection time as
+no difference above run-to-run noise at this scale. Measured failover detection time as
 interval x threshold. Verified graceful drain returns 200s where SIGKILL
 severs in-flight requests."
 

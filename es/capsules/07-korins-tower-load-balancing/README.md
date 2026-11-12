@@ -146,7 +146,7 @@ posible.
 
 ## Lab
 
-### Paso 1 — mirá los algoritmos diferir
+### Paso 1 — round robin, la línea de base
 
 Construí sobre el setup de la Cápsula 06. Reemplazá **`deploy/nginx.conf`**:
 
@@ -212,7 +212,7 @@ Ahora mezclá requests lentos y rápidos. `/train` de la Cápsula 05 es tu endpo
 lento.
 
 ```bash
-# 6 slow requests in the background — these will pin some backends
+# 6 slow requests in the background — these keep some backends busy
 for i in $(seq 1 6); do
   curl -s -o /dev/null "localhost:8080/train?rounds=3000000" &
 done
@@ -228,12 +228,18 @@ wait
 ```
 
 > Reusá el `ROUNDS` que calibraste en la Cápsula 05 y multiplicalo por ~15 — acá
-> lo que importa es un request lo bastante lento como para *ver* el desbalance, no
-> un número puntual. En ARM, 3.000.000 de rounds son apenas ~300 ms y la
-> diferencia entre round-robin y `least_conn` queda invisible.
+> lo que importa es un request que tenga a un backend ocupado unos segundos
+> mientras corren los rápidos, no un número puntual. En ARM, 3.000.000 de rounds
+> son apenas ~300 ms: los lentos terminan durante el `sleep 1`, antes de que
+> salga un solo request rápido, y no medís nada. Si tus requests "lentos" vuelven
+> en milisegundos, te pasaste del tope de `rounds` y te tocó el default en
+> silencio (Cápsula 05).
 
-Algunos requests rápidos tardaron mucho más de lo que deberían — round robin los
-mandó a un backend ya ocupado con una cadena de hashes. Anotá los peores tiempos.
+Anotá los cinco peores tiempos — son tu línea de base de round-robin para el
+Paso 3. La intuición dice que algunos deberían ser malísimos, porque round robin
+le sigue mandando requests rápidos a backends ocupados con una cadena de hashes.
+Anotá lo que te dio de verdad, no lo que predice la intuición; si se cumple o no
+es justo lo que prueba el Paso 3.
 
 ### Paso 3 — cambiá a least connections
 
@@ -543,7 +549,7 @@ falla dura de readiness para "esta instancia específicamente está rota".
 | Todo el tráfico va a un backend | nginx resolvió `scouter` una vez al arrancar. Reiniciá el LB después de escalar, o usá un `resolver` con una variable en `proxy_pass`. |
 | `upstream timed out` en `/train` | `proxy_read_timeout` es menor que el request. Subilo o bajá `rounds`. |
 | `502` inmediato en cada request | Los backends todavía no están arriba, o el puerto está mal. `docker compose logs scouter`. |
-| `least_conn` no hace diferencia visible | Tus requests cuestan todos lo mismo. El punto entero es el costo variable — asegurate de que los lentos estén corriendo de verdad. |
+| `least_conn` no hace diferencia visible | Es lo esperable a esta escala — el Paso 3 explica por qué. Descartá primero la causa trivial: si los requests "lentos" vuelven en milisegundos, `rounds` pasó el tope y cayó al default (Cápsula 05), así que nada estuvo ocupado. |
 | nginx no arranca | Sintaxis. `docker compose exec lb nginx -t` imprime la línea exacta. |
 
 ---
@@ -556,7 +562,7 @@ git add -A
 git commit -m "feat(deploy): nginx load balancer with health checks and draining
 
 Capsule 07. Compared round-robin vs least_conn under mixed request costs —
-difference shows only in the tail. Measured failover detection time as
+no difference above run-to-run noise at this scale. Measured failover detection time as
 interval x threshold. Verified graceful drain returns 200s where SIGKILL
 severs in-flight requests."
 

@@ -57,7 +57,7 @@ propósito lo que construyeron las primeras.
 
 ### El Arco de Relleno (opcional)
 
-Siete cápsulas extra con los fundamentos sobre los que se apoya el arco
+Diez cápsulas extra con los fundamentos sobre los que se apoya el arco
 principal. Cualquier fan de DBZ sabe que los capítulos de relleno no son
 obligatorios — pero los que tienen entrenamiento de verdad valen la pena.
 

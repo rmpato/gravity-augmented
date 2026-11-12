@@ -323,16 +323,33 @@ echo "--- edge ---"
 for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total}\n" localhost:8090/leaderboard; done
 ```
 
-On a laptop both are fast, so **simulate the real distance**:
+On a laptop both are fast, so **simulate the real distance** by making the
+origin slow. Add a temporary delay to the leaderboard handler (import `time` if
+the file doesn't already), rebuild and restart the origin:
 
-```bash
-# add 150ms to the origin, as if it were on another continent
-docker exec edge sh -c "apk add --no-cache iproute2 >/dev/null 2>&1 || true"
+```go
+// top of the leaderboard handler — TEMPORARY, delete after this step
+time.Sleep(150 * time.Millisecond) // the origin is "on another continent"
 ```
 
-Or simpler — add an artificial delay to the origin handler temporarily
-(`time.Sleep(150 * time.Millisecond)`) and re-measure. **The MISS pays it. The
-HIT doesn't.** That gap is the entire product.
+Then empty the edge's cache, or the old entry gets served as `STALE` while it
+refreshes in the background and you never see a slow MISS:
+
+```bash
+docker stop edge    # it was started with --rm, so its cache goes with it
+```
+
+Start it again with the same `docker run` as above, and re-run both loops. The
+origin now takes ~150 ms every time. Through the edge, the first request (the
+MISS) pays the 150 ms and the HITs that follow come back in a millisecond or two. **The MISS pays it. The HIT doesn't.** That gap is the
+entire product. Remove the sleep before moving on.
+
+> Why not delay the network instead, with `tc qdisc … netem` inside the edge
+> container? Because that delays *every* packet leaving the edge, including the
+> HIT going back to your `curl` — a HIT would cost as much as a MISS, which is
+> the opposite of what you are trying to see. To fake distance with `netem` you
+> would have to filter by destination. The sleep puts the delay exactly where
+> the real distance is: between the edge and the origin.
 
 ### Step 4 — origin shielding under failure
 

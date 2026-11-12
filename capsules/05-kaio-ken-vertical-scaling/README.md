@@ -117,9 +117,11 @@ The same class of bug exists in the JVM (fixed by
 You will reproduce it below.
 
 > Go 1.25 made the runtime cgroup-aware, so `GOMAXPROCS` respects the CPU limit
-> automatically. On earlier versions — including the 1.23 in these capsules —
-> you set it yourself or use `go.uber.org/automaxprocs`. Know the mechanism
-> either way; the equivalent trap in other runtimes is alive and well.
+> automatically, but only when your `go.mod` says `go 1.25` or later. With an
+> older `go` directive the runtime keeps the old behaviour even when a 1.25
+> toolchain builds it (`head -3 go.mod` tells you which you have). On the old
+> behaviour you set it yourself or use `go.uber.org/automaxprocs`. Know the
+> mechanism either way; the equivalent trap in other runtimes is alive and well.
 
 ---
 
@@ -263,13 +265,21 @@ at exactly the limit. That flat ceiling is cgroup throttling, live.
 ### Step 4 — reproduce the GOMAXPROCS trap
 
 ```bash
-docker run --rm --cpus=1 scouter:latest &   # (or just curl the running one)
+docker run -d --rm -p 8080:8080 --name trap --cpus=1 scouter:latest
+sleep 1
 curl -s "localhost:8080/train?rounds=100000" | jq '{gomaxprocs, num_cpu}'
 ```
 
 You'll see something like `{"gomaxprocs": 10, "num_cpu": 10}` on a 10-core
 machine **even though the container is limited to 1 CPU**. Ten runnable threads
 fighting over one core's quota.
+
+> **If you see `"gomaxprocs": 2` instead,** your `go.mod` says `go 1.25` or
+> later, so the runtime already read the cgroup limit (it never goes below 2).
+> That's the fix working, not a mistake. To see the trap anyway, restart with
+> the old behaviour switched back on:
+> `docker stop trap`, then the same `docker run` with
+> `-e GODEBUG=containermaxprocs=0` added.
 
 Now fix it and compare:
 
@@ -284,6 +294,8 @@ Run the concurrent load against both and compare tail latency, not just the
 mean. The unconstrained-GOMAXPROCS one usually shows a worse p99 — that's the
 context-switching cost, and it's exactly what makes this bug so hard to spot
 from a dashboard showing healthy average CPU.
+
+`docker stop trap fixed` when you're done. Step 5 needs port 8080 back.
 
 The production fix is one import in `main.go`:
 
@@ -486,7 +498,7 @@ return an unbounded result set.
 | Container exits with 137 | OOMKilled. Raise `--memory` or reduce allocation. |
 | Container exits with 139 | SIGSEGV — a real crash, not a limit. |
 | `gomaxprocs` still wrong after `automaxprocs` | The import must be blank (`_ "go.uber.org/automaxprocs"`) and in `main`'s package. Run `go mod tidy`. |
-| `/train` returns instantly | `rounds` is capped at 5,000,000 and defaults to 200,000. Raise it if your machine is fast. |
+| `/train` returns instantly | `rounds` is capped at 50,000,000 and defaults to 1,000,000. Over the cap it silently falls back to the default, so check `duration_ms`. Raise it if your machine is fast. |
 
 ---
 

@@ -681,7 +681,7 @@ git commit -m "perf(cache): singleflight, negative caching, hot-key absorption
 Capsule 15. Reproduced a 200-query stampede and collapsed it to 1 with
 singleflight. Negative caching closes the penetration path. 1s in-process
 cache absorbs hot keys. Consistent hash ring with a test proving ~25%
-remap on node loss vs ~65% for modulo."
+remap on node loss vs ~75% for modulo."
 
 cd ~/repos/pato/gravity-augmented && ./bin/scouter done 15
 ```

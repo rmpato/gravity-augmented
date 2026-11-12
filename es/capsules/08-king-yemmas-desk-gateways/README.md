@@ -181,8 +181,10 @@ categoría entera: nginx y Envoy hacen esto, más rápido y con más features.
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -242,6 +244,11 @@ func New(cfg Config, log *slog.Logger) (*Gateway, error) {
 		p.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
 			log.Error("upstream failure",
 				"target", target.String(), "path", req.URL.Path, "err", err)
+			if errors.Is(err, context.DeadlineExceeded) {
+				// 504, not 502: the backend is up, it just blew the budget.
+				http.Error(w, `{"error":"upstream timed out"}`, http.StatusGatewayTimeout)
+				return
+			}
 			http.Error(w, `{"error":"upstream unavailable"}`, http.StatusBadGateway)
 		}
 
@@ -318,6 +325,14 @@ func (g *Gateway) route(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "" {
 			r.URL.Path = "/"
 		}
+	}
+
+	// Without a deadline, a hung backend holds this request (and its
+	// goroutine and connection) until the client gives up.
+	if g.cfg.UpstreamWait > 0 {
+		ctx, cancel := context.WithTimeout(r.Context(), g.cfg.UpstreamWait)
+		defer cancel()
+		r = r.WithContext(ctx)
 	}
 	proxy.ServeHTTP(w, r)
 }
@@ -742,6 +757,7 @@ La Cápsula 17 implementa un token bucket bien hecho.
 | Síntoma | Solución |
 |---|---|
 | El gateway devuelve 502 en todo | `SCOUTER_URL` está mal, o el backend no está corriendo. Mirá la línea de log `upstream failure` — nombra el target. |
+| Los requests lentos vuelven `504` a los 10 s justos | Es `UpstreamWait` haciendo su trabajo: el log dice `context deadline exceeded`. Hacé más rápido el backend, o subí el presupuesto para esa ruta, pero mantenelo por debajo del `WriteTimeout` del server (30 s) o el cliente recibe una conexión cortada en vez de un 504. |
 | El backend ve el path original con el prefijo | `Strip: true` tiene que estar en la ruta, y el matcheo es por prefijo más largo. |
 | Falta `X-Request-Id` en la respuesta | El middleware tiene que setearlo en `w.Header()` *antes* de que el handler escriba nada. No se pueden setear headers después de empezar el body. |
 | El rate limiter nunca se dispara | Indexa por `X-Caller`, que solo se setea en rutas no públicas. `/healthz` es pública y sin límite por diseño. |

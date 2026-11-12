@@ -87,13 +87,14 @@ Stop calling a dependency that is clearly broken.
       │                                  │ after a cooldown
       │   success                        ▼
       └──────────────────────── HALF-OPEN
-                                (let a few through and see)
+                                (one probe at a time)
 ```
 
 - **Closed** — normal; count failures.
 - **Open** — fail immediately without calling. Return a fallback. This is the
   point: you stop paying the timeout on every single request.
-- **Half-open** — after a cooldown, allow a trickle. Success closes it; failure
+- **Half-open** — after a cooldown, let a single probe through at a time while
+  everyone else still fails fast. A few successes in a row close it; one failure
   re-opens it.
 
 The value isn't protecting the dependency (though it helps). It's protecting
@@ -362,6 +363,7 @@ type Breaker struct {
 	failures     int
 	successes    int
 	openedAt     time.Time
+	probing      bool // half-open: a probe call is in flight
 
 	threshold    int           // consecutive failures that trip it
 	cooldown     time.Duration // how long to stay open
@@ -392,12 +394,18 @@ func (b *Breaker) allow() bool {
 
 	switch b.state {
 	case open:
-		if time.Since(b.openedAt) > b.cooldown {
-			b.state = halfOpen
-			b.successes = 0
-			return true // let one through to probe
+		if time.Since(b.openedAt) < b.cooldown {
+			return false
 		}
-		return false
+		b.state = halfOpen
+		b.successes = 0
+		fallthrough
+	case halfOpen:
+		if b.probing {
+			return false // one probe at a time; everyone else still fails fast
+		}
+		b.probing = true
+		return true // let one through to probe
 	default:
 		return true
 	}
@@ -406,6 +414,7 @@ func (b *Breaker) allow() bool {
 func (b *Breaker) record(ok bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.probing = false // the probe, if this was one, is over
 
 	if ok {
 		switch b.state {
@@ -479,6 +488,25 @@ func TestBreakerOpensAndRecovers(t *testing.T) {
 		t.Errorf("state = %s, want closed", b.State())
 	}
 }
+
+func TestBreakerHalfOpenAdmitsOneProbe(t *testing.T) {
+	b := NewBreaker(1, 10*time.Millisecond)
+	b.Do(func() error { return errors.New("boom") }) // trip it
+	time.Sleep(20 * time.Millisecond)                // cooldown
+
+	release := make(chan struct{})
+	started := make(chan struct{})
+	go b.Do(func() error { close(started); <-release; return nil }) // the probe, held open
+	<-started
+
+	// While the probe is in flight, everyone else must still be refused.
+	called := false
+	err := b.Do(func() error { called = true; return nil })
+	close(release)
+	if called || !errors.Is(err, ErrCircuitOpen) {
+		t.Fatalf("call during half-open: called=%v err=%v, want ErrCircuitOpen", called, err)
+	}
+}
 ```
 
 ```bash
@@ -500,11 +528,13 @@ type CachedStore struct {
 // either duplicate the network call or throw away your hot-key cache.
 func (c *CachedStore) latestFromRedisOrDB(fighter string) (Reading, bool) {
 	var raw []byte
+	var miss bool
 	err := c.breaker.Do(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 		b, err := c.rdb.Get(ctx, fighterKey(fighter)).Bytes()
 		if errors.Is(err, redis.Nil) {
+			miss = true
 			return nil // a miss is not a failure — don't trip the breaker on it
 		}
 		raw = b
@@ -738,26 +768,39 @@ worth internalising.
 
 ### Step 6 — simulate a cascade, then stop it
 
-```bash
-# make Postgres artificially slow
-docker compose exec -T postgres psql -U scouter -d scouter -c \
-  "ALTER SYSTEM SET default_transaction_isolation='serializable'; SELECT pg_reload_conf();"
-```
-
-Or simply pause the container:
+Make the database stop answering — not down, just silent, which is the worse
+case from the start of this capsule:
 
 ```bash
 docker compose pause postgres
 k6 run --vus 100 --duration 20s scripts/load/stress.js
 ```
 
-Without a breaker: every request waits the full query timeout, goroutines pile
-up, memory grows, health checks start failing, and the load balancer removes
-your (healthy) instances.
+With none of this capsule's protections, every request would wait as long as
+the database made it, goroutines would pile up, memory would grow, and
+eventually health checks fail and the load balancer removes your (healthy)
+instances.
 
-With breaker + shedder: requests fail in ~0 ms with a clear error, memory stays
-flat, health checks keep passing, and you recover the instant the database comes
-back.
+Here is what you actually get. Measured with this capsule's code, 100 VUs from
+one machine, Postgres paused:
+
+- **Writes** each wait the 3-second timeout on the database call, then give up.
+- **Leaderboard reads** that Redis can answer stay at a few milliseconds. The
+  ones that miss go to Postgres and wait for their timeout (up to 5 s).
+- **`/healthz` stays at a few milliseconds** — liveness never touches the
+  database (Capsule 01).
+- **Most of k6's requests get a `429` in ~2 ms** from Step 1's rate limiter,
+  because they all come from one IP. That same limit is what keeps the number of
+  in-flight requests below the shedder's cap in this run.
+
+Notice what did *not* happen: nothing failed in ~0 ms because a breaker opened.
+**Your breaker wraps Redis, not Postgres**, so a silent database is still paid
+for in timeouts. What saved you is that the cost is *bounded* — by the deadlines
+from Step 2, by the limiter, and by the shedder if more traffic gets through —
+instead of piling up without limit. If you want database calls to fail fast too,
+give them their own `Breaker`: same type, a second instance. And when you
+unpause, everything recovers on the next request, because nothing was left
+stuck.
 
 ```bash
 docker compose unpause postgres
@@ -917,7 +960,7 @@ interactive user requests. And never shed health checks.
 |---|---|
 | Rate limiter blocks everyone | The key function returns a constant. Log the key while debugging. |
 | Limit is N× higher than configured | Per-replica limiting with N replicas. Use Redis, or divide the limit. |
-| Breaker never opens | Cache misses or 404s counted as failures? No — the opposite: only count *real* failures, and check that `record(false)` is actually reached. |
+| Breaker never opens | Real failures aren't reaching `record(false)`. Check that the closure returns the error (only `redis.Nil` should become `nil`) and that the call actually goes through `breaker.Do`. Remember the threshold counts *consecutive* failures — one success in between resets it. (Counting misses or 404s as failures is the opposite bug: the breaker opens when nothing is wrong.) |
 | Breaker never closes | `halfOpenNeed` successes never accumulate because probes keep failing — the dependency really is still down. |
 | Retries take forever | No `MaxDelay` cap, so exponential backoff reaches minutes. Cap it. |
 | Memory grows with limiter | Per-key map without reaping. That's what `reap()` is for. |

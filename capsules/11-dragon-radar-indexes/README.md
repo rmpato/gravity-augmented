@@ -216,10 +216,13 @@ SELECT * FROM readings WHERE fighter_id = 42 ORDER BY recorded_at DESC LIMIT 10;
 ```
 
 Look for:
-- `Seq Scan on readings` — reading all 2 million rows
+- `Parallel Seq Scan on readings` under a `Gather Merge` — Postgres splits the
+  scan across worker processes, and between them they read all 2 million rows
+  (`Rows Removed by Filter` is per worker, so it shows about a third of that)
 - a `Sort` node with a real cost
-- `Buffers: shared read=…` — a large number of pages
-- `Execution Time:` — likely 100–400 ms
+- `Buffers: shared hit=…` — about 14,700 pages, the whole table (`hit` means
+  they were already in memory; right after a restart you'll see `read=` instead)
+- `Execution Time:` — tens of milliseconds; about 30 ms on a recent laptop
 
 Write it down.
 
@@ -236,9 +239,10 @@ SELECT * FROM readings WHERE fighter_id = 42 ORDER BY recorded_at DESC LIMIT 10;
 Now you should see `Index Scan using idx_readings_fighter_time`, **no Sort node
 at all**, a handful of buffers, and sub-millisecond execution.
 
-Typically **10–100×**, and the gap widens as the table grows — a sequential
-scan is O(n) while the index lookup is not. Measured on this 200k-row table:
-7.6 ms → 0.094 ms, about **80×**. From one line of DDL.
+The gap widens as the table grows — a sequential scan is O(n) while the index
+lookup is not, so on a small table it might be 10×, and here it is far more.
+Measured on these 2 million rows: 29 ms → 0.040 ms, roughly **700×**. From one
+line of DDL.
 
 **Now prove that column order matters.** Build the reversed index and force its use:
 
@@ -261,15 +265,17 @@ it returns.
 `Index Scan` and both say `Index Cond: (fighter_id = 42)` — there is no
 `Rows Removed by Filter` to point at, because the check happens inside the index
 rather than against the heap. The work still happened; it just isn't reported as
-a filter. Measured on 200k rows:
+a filter. Measured on 2 million rows (second run of each, so everything is a
+cache hit):
 
 | Index | Estimated cost | Buffers | Time |
 |---|---|---|---|
-| `(fighter_id, recorded_at DESC)` — right | 390 | **16** | 0.077 ms |
-| `(recorded_at DESC, fighter_id)` — wrong | 4973 | **90** | 0.290 ms |
-| no usable index | 13676 | — | 7.6 ms |
+| `(fighter_id, recorded_at DESC)` — right | 39 | **13** | 0.040 ms |
+| `(recorded_at DESC, fighter_id)` — wrong | 499 | **83** | 0.148 ms |
+| no usable index | 26132 | **14,780** | 29 ms |
 
-Nearly 6× the buffers for the same ten rows. This is the general lesson: when
+Over 6× the buffers for the same ten rows. Your exact numbers will differ — the
+data is random — but the shape won't. This is the general lesson: when
 two plans look structurally identical, `BUFFERS` is what tells them apart —
 which is why `EXPLAIN (ANALYZE, BUFFERS)` should be your default, not
 `EXPLAIN ANALYZE`.
@@ -291,8 +297,10 @@ EXPLAIN ANALYZE SELECT count(*) FROM readings WHERE power > 9999000;
 EXPLAIN ANALYZE SELECT count(*) FROM readings WHERE power > 1000;
 ```
 
-The second returns ~90% of the table. A sequential scan is genuinely faster
-than 1.8 million random page fetches. **The planner is not being stupid — you
+The second matches **99.99%** of the table: `power` is spread evenly from 0 to
+10,000,000, so only about one row in 10,000 is 1000 or below. Reading the whole
+table front to back is cheaper than walking 2 million index entries and then
+going back to the table for each one. **The planner is not being stupid — you
 are seeing selectivity in action.**
 
 Prove it to yourself:
@@ -303,7 +311,12 @@ EXPLAIN ANALYZE SELECT count(*) FROM readings WHERE power > 1000;
 SET enable_seqscan = on;
 ```
 
-Forcing the index makes it *slower*. Note both numbers.
+Forcing the index makes it *slower*. Note both numbers. Which plan you get
+depends on whether autovacuum has visited the table since the bulk load. If it
+has, Postgres can answer `count(*)` from the index alone (`Index Only Scan`,
+`Heap Fetches: 0`) and the loss is small — 76 ms against 68 ms for the seq scan,
+measured. If it hasn't, you get a `Bitmap Heap Scan` that visits the table
+anyway — 180 ms against 72 ms. Either way, not faster.
 
 ```sql
 DROP INDEX idx_readings_power;
@@ -575,7 +588,7 @@ cd ~/repos/pato/gravity-chamber
 git add -A
 git commit -m "perf(db): composite and covering indexes, keyset pagination
 
-Capsule 11. (fighter_id, recorded_at DESC) took the hot lookup from ~200ms
+Capsule 11. (fighter_id, recorded_at DESC) took the hot lookup from ~30ms
 seq scan to sub-ms index scan with no sort. Measured the reversed column
 order and the write cost of extra indexes. Replaced OFFSET with keyset."
 

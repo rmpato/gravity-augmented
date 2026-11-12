@@ -229,7 +229,7 @@ flujo de trabajo es idéntico al de GCP.
 terraform {
   required_version = ">= 1.6"
   required_providers {
-    local  = { source = "hashicorp/local",  version = "~> 2.5" }
+    local  = { source = "hashicorp/local", version = "~> 2.5" }
     random = { source = "hashicorp/random", version = "~> 3.6" }
   }
   # In real projects, state goes here. Commented out until Capsule 04.
@@ -298,7 +298,7 @@ terraform init          # downloads providers, creates .terraform.lock.hcl
 terraform fmt           # canonical formatting — run this in CI
 terraform validate      # syntax and type checking, no cloud calls
 
-terraform plan          # "3 to add, 0 to change, 0 to destroy"
+terraform plan          # "2 to add, 0 to change, 0 to destroy"
 terraform apply         # type: yes
 cat generated/dev.env
 
@@ -308,21 +308,26 @@ terraform plan          # "No changes." <- convergence. Run it a hundred times.
 **Ahora ponelo interesante.**
 
 ```bash
-# 1. A safe in-place change
+# 1. A change that looks like an in-place update
 terraform plan -var 'replica_count=3'
-#    => "1 to change" and a ~ (update in place) marker. Cheap. Safe.
+#    => NOT "1 to change". You get "local_file.manifest must be replaced",
+#    "-/+", "# forces replacement" on content, and
+#    "1 to add, 0 to change, 1 to destroy". local_file cannot edit a file
+#    in place: any content change is delete-and-recreate.
 
 # 2. A destructive change
 terraform plan -var 'environment=prod'
-#    => notice "-/+ must be replaced" and "forces replacement" on random_pet.
+#    => "2 to add, 0 to change, 2 to destroy": random_pet is replaced
+#    ("forces replacement" on keepers), and the manifest is replaced with it.
 #    This is exactly the signal that would tell you a config tweak is about
 #    to recreate a production database. LOOK FOR IT IN EVERY PLAN.
 
 # 3. Drift — someone edits the real world by hand
 echo "HACKED=true" >> generated/dev.env
 terraform plan
-#    => Terraform detects the file no longer matches and offers to fix it.
-#    This is what "click-ops drift" looks like, caught automatically.
+#    => "local_file.manifest will be created", "1 to add". The provider
+#    sees the file no longer matches, drops it from state, and plans to
+#    write it again. This is "click-ops drift", caught automatically.
 
 terraform apply -auto-approve   # convergence: the manual edit is reverted
 
@@ -333,6 +338,16 @@ terraform state list
 # 5. Clean up
 terraform destroy
 ```
+
+El paso 1 es la lección escondida en este lab. Cambiar un número *parece* un
+update, pero si un cambio es `~ update in-place` o `-/+ replace` no lo decidís
+vos: lo decide el provider, atributo por atributo. `local_file` no tiene una
+operación de "editar", así que cualquier cambio de contenido es un reemplazo.
+Para un archivo no cuesta nada. En una nube real, muchos atributos (un label,
+los límites de escalado de un servicio de Cloud Run) sí se actualizan in-place
+y muestran `~`, pero algunos que parecen inocentes fuerzan un reemplazo. El plan
+te dice cuáles, en la línea marcada `# forces replacement`. Por eso leés cada
+plan en vez de adivinar.
 
 **`deploy/terraform/.gitignore`**
 

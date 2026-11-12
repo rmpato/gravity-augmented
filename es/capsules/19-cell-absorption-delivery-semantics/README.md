@@ -366,6 +366,23 @@ func (r *Ranker) HandleVersioned(ctx context.Context, e PowerRecorded) error {
 }
 ```
 
+Además del `WHERE` cambiaron dos cosas, y las dos son a propósito. Primero,
+`total_power` ahora se **pisa**, no se suma: un chequeo de versión sólo sirve
+para updates del tipo "dejalo en este estado" (pregunta 5 del drill), porque un
+total acumulado no puede ignorar un evento viejo sin perderlo. Así que en esta
+variante la columna guarda el poder *más reciente* del peleador (el nombre
+quedó del Paso 1) y `reading_count` se queda en 1. Si necesitás un total de
+verdad, eso es un delta, y los deltas necesitan la tabla de procesados del
+Paso 2.
+
+Segundo, la versión es `recorded_at` en nanosegundos, **no** el campo
+`"version"` del JSON del evento, que es la versión del *schema* de la Cápsula
+18. Esto importa si reusás el evento armado a mano del Paso 1 para probarlo: no
+tiene `recorded_at`, así que Go decodifica el tiempo cero, `UnixNano()`
+devuelve un número negativo enorme, y contra la fila que dejó el Paso 2
+(`last_version = 0`) el update no matchea nada, en silencio. Probá con eventos
+del publisher real, o agregale `"recorded_at":"2026-01-01T00:00:00Z"` al JSON.
+
 Testealo bien — este es un test que vale la pena tener en un codebase real:
 
 **`internal/events/ranker_test.go`**
@@ -433,7 +450,8 @@ type PermanentError struct{ Err error }
 func (e PermanentError) Error() string { return "permanent: " + e.Err.Error() }
 func (e PermanentError) Unwrap() error { return e.Err }
 
-// in the Receive callback:
+// in the Receive callback (dlq := client.Topic("power-readings-dlq"),
+// created once, next to sub):
 	if err := handle(ctx, e); err != nil {
 		var perm PermanentError
 		if errors.As(err, &perm) {
@@ -442,8 +460,19 @@ func (e PermanentError) Unwrap() error { return e.Err }
 			// now instead of burning 5 attempts.
 			log.Error("permanent failure, dead-lettering",
 				"event_id", e.EventID, "err", err)
-			m.Ack()               // ack the original…
-			_ = dlq.Publish(ctx, m) // …after copying it aside
+			// Copy it aside FIRST, and wait for the broker to confirm.
+			// Ack first and a failed publish loses the message for good.
+			res := dlq.Publish(ctx, &pubsub.Message{
+				Data:       m.Data,
+				Attributes: map[string]string{"error": err.Error()},
+			})
+			if _, perr := res.Get(ctx); perr != nil {
+				log.Error("dead-letter publish failed, nacking",
+					"event_id", e.EventID, "err", perr)
+				m.Nack() // redelivered; maxDeliveryAttempts is the backstop
+				return
+			}
+			m.Ack() // the copy is safe; now let go of the original
 			return
 		}
 		// Transient: database timeout, cache down, network blip. Retry.
