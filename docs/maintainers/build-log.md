@@ -660,3 +660,54 @@ so too and has been corrected. Only four patterns were ever broken, not five.
 which includes every ref. The genuine pre-rewrite state survived only on the
 remote. Lesson: a backup ref taken *before* a `filter-branch --all` is not a
 backup. Take it after, from the remote, or exclude it from the rewrite.
+
+### The reader's heading anchors never worked (found 2026-08-09)
+
+Writing B11 I wanted a "jump to the cheatsheet" link — the capsule is half
+reference, so it needs one. It worked on GitHub and did nothing in the reader.
+Two independent bugs, both invisible to every check we had.
+
+**1. The slug didn't match GitHub.** `web/md.js` built heading ids with
+
+```js
+.replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-")
+```
+
+`\w` is ASCII-only, so accented letters were **deleted**: `línea` became `lnea`,
+`cápsula` became `cpsula`. And `\s+` collapsed the two spaces an em-dashed
+heading leaves behind, so `Lab — one module` slugged to `lab-one-module` where
+GitHub emits `lab--one-module`.
+
+Measured against GitHub's own renderer (`gh api ... -H "Accept:
+application/vnd.github.html"`) over B11's 55 headings per language: **21 of 55
+wrong in English, 29 of 55 in Spanish.** The Spanish half was worse because
+nearly every heading carries an accent. 453 headings repo-wide contain an em
+dash, so this was close to total.
+
+**2. Even a correct slug went nowhere.** `route()` treats every hash as a route,
+so `#the-cheatsheet` became `renderCapsule("the-cheatsheet")`, which finds no
+capsule and falls through to `renderHome()`. Clicking a table-of-contents link
+threw you out of the capsule you were reading.
+
+Both are fixed: the slug now matches github-slugger (letters/digits/marks/
+connectors survive, each space becomes one hyphen), and `route()` falls back to
+scrolling to a matching element before giving up and going home.
+
+**Why it was invisible.** `validate.py` check 5 explicitly skips `#` targets, so
+no anchor was ever checked. And the one place anchors were already in use —
+`docs/maintainers/runbooks.md`, with nine of them — is a *maintainer* doc that
+renders correctly on GitHub, which is where we always read it. All nine were
+dead in the reader and nobody had looked.
+
+**The trap for whoever touches this next:** the reader is now a second
+implementation of GitHub's slug rule. `validate.py` check 5b is a third, in
+Python. All three must agree or anchors rot again — the check exists precisely
+so they can't drift silently. Both implementations were verified to produce
+byte-identical output to GitHub across 110 real headings in two languages.
+
+**Process note.** Verifying the scroll in an automated browser tab looked like a
+failure: `scrollIntoView()` moved nothing and `window.scrollY` stayed 0. The
+cause was the app's `scroll-behavior: smooth`, which animates via
+`requestAnimationFrame` — throttled in a tab that isn't foregrounded. Forcing
+`{behavior: "instant"}` scrolled exactly as intended. The fix was right and the
+measurement was lying; worth remembering before "fixing" a working scroll.

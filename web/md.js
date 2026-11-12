@@ -140,11 +140,17 @@ export function render(src) {
             closeLists();
             const level = h[1].length;
             const text = inline(h[2]);
+            // Must match GitHub's slug exactly, or an in-page anchor written for
+            // one surface is dead on the other. Two rules, both load-bearing:
+            //   - keep letters/digits/marks, drop punctuation. \w is ASCII-only,
+            //     so it DELETED accented letters: "línea" -> "lnea".
+            //   - replace each space individually. \s+ collapsed the run left by
+            //     a stripped em dash, so "Lab — one" -> "lab-one", not "lab--one".
             const id = h[2]
-                .toLowerCase()
-                .replace(/[^\w\s-]/g, "")
                 .trim()
-                .replace(/\s+/g, "-");
+                .toLowerCase()
+                .replace(/[^\p{L}\p{N}\p{M}\p{Pc}\s-]/gu, "")
+                .replace(/\s/g, "-");
             out.push(`<h${level} id="${id}">${text}</h${level}>`);
             i++;
             continue;
