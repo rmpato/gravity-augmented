@@ -361,16 +361,42 @@ Write in `NOTES.md`: *"A closed-model test cannot find my breaking point."*
 ### Step 5 — vary the resources, watch the knee move
 
 ```bash
-for cpus in 0.5 1 2; do
+for cpus in 0.125 0.25 0.5; do
   docker rm -f hbtc 2>/dev/null
   docker run -d --rm -p 8080:8080 --name hbtc --cpus=$cpus --memory=512m scouter:latest
   sleep 2
   echo "=== cpus=$cpus ==="
-  k6 run --quiet scripts/load/stress.js 2>&1 | grep -E 'http_reqs|http_req_duration|http_req_failed'
+  k6 run --quiet scripts/load/stress.js 2>&1 | grep -E 'http_reqs|http_req_duration|http_req_failed|dropped_iterations|vus_max'
 done
 ```
 
-You now have a **capacity model**: RPS per vCPU. That single number lets you
+Those are the Step 2 limit halved and doubled. Not `0.5 1 2`: at `--cpus=1`
+the knee is already past the top of this ramp (see Step 2), so most of a sweep
+up there would just look flat.
+
+Compare `dropped_iterations` and `vus_max` across the runs, not `http_reqs`.
+Every run is offered the same arrival schedule, so the request count barely
+changes while the service keeps up. If the `dropped_iterations` line is missing,
+nothing was dropped. Expect three different shapes:
+
+- **`0.125`**: well past the knee. p95 is orders of magnitude worse than the
+  others, a large share of iterations are dropped, and `vus_max` hits the 800
+  ceiling.
+- **`0.25`**: your Step 2 run, at or around the knee late in the ramp.
+- **`0.5`**: flat. Low p95, next to nothing dropped, `vus_max` stays near its
+  50 preallocated. The knee didn't disappear. It moved past 1600 rps, the top
+  of the ramp. A flat run is a lower bound ("at least 1600 rps"), not a
+  capacity number.
+
+Doubling the CPU moved the knee further than this ramp can follow, and that is
+the result. If all three look flat on your machine, halve all three values; if
+all three collapse, double them. The same rule as Step 2 applies: pick the scale
+where the knee lands inside the ramp.
+
+You now have a **capacity model**: RPS per vCPU. Take it from a run whose knee
+falls inside the ramp (the achieved RPS where it stopped tracking target, divided
+by `--cpus`), never from a flat run, which only tells you the ceiling is higher
+still. That single number lets you
 answer "how many instances for 10,000 RPS?" without running another test — and
 it's exactly what Capsule 26 asks you to produce.
 
@@ -531,7 +557,7 @@ cd ~/repos/pato/gravity-chamber
 git add -A
 git commit -m "test(load): k6 smoke and open-model stress scenarios
 
-Capsule 09. Found the knee at N RPS on 1 vCPU; recorded RPS-per-vCPU as a
+Capsule 09. Found the knee at N RPS at --cpus=0.25; recorded RPS-per-vCPU as a
 capacity ratio. Confirmed a closed-model test cannot find the breaking point
 (coordinated omission). Smoke test has SLO thresholds so CI can gate on it."
 

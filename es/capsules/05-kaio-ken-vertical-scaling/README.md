@@ -122,9 +122,11 @@ dimensionamiento del thread pool de `libuv` en Node.
 Lo vas a reproducir más abajo.
 
 > Go 1.25 hizo al runtime consciente de cgroups, así que `GOMAXPROCS` respeta el
-> límite de CPU automáticamente. En versiones anteriores — incluida la 1.23 de
-> estas cápsulas — lo ponés vos o usás `go.uber.org/automaxprocs`. Conocé el
-> mecanismo igual; la trampa equivalente en otros runtimes está viva y coleando.
+> límite de CPU automáticamente, pero solo si tu `go.mod` dice `go 1.25` o más.
+> Con una directiva `go` más vieja el runtime mantiene el comportamiento viejo
+> aunque lo compile un toolchain 1.25 (`head -3 go.mod` te dice cuál tenés). Con
+> el comportamiento viejo lo ponés vos o usás `go.uber.org/automaxprocs`. Conocé
+> el mecanismo igual; la trampa equivalente en otros runtimes está viva y coleando.
 
 ---
 
@@ -269,13 +271,21 @@ en vivo.
 ### Paso 4 — reproducí la trampa de GOMAXPROCS
 
 ```bash
-docker run --rm --cpus=1 scouter:latest &   # (or just curl the running one)
+docker run -d --rm -p 8080:8080 --name trap --cpus=1 scouter:latest
+sleep 1
 curl -s "localhost:8080/train?rounds=100000" | jq '{gomaxprocs, num_cpu}'
 ```
 
 Vas a ver algo como `{"gomaxprocs": 10, "num_cpu": 10}` en una máquina de 10 cores
 **aunque el container esté limitado a 1 CPU**. Diez hilos ejecutables peleando por
 la cuota de un core.
+
+> **Si en cambio ves `"gomaxprocs": 2`,** tu `go.mod` dice `go 1.25` o más, así
+> que el runtime ya leyó el límite del cgroup (nunca baja de 2). Es el arreglo
+> funcionando, no un error. Para ver la trampa igual, reiniciá con el
+> comportamiento viejo activado:
+> `docker stop trap`, y después el mismo `docker run` agregando
+> `-e GODEBUG=containermaxprocs=0`.
 
 Ahora arreglalo y compará:
 
@@ -290,6 +300,8 @@ Corré la carga concurrente contra los dos y compará la latencia de cola, no so
 la media. El que tiene GOMAXPROCS sin restringir normalmente muestra un p99 peor —
 ese es el costo del context switching, y es exactamente lo que hace tan difícil de
 detectar este bug desde un dashboard que muestra CPU promedio saludable.
+
+Cuando termines, `docker stop trap fixed`. El Paso 5 necesita el puerto 8080 libre.
 
 La solución de producción es un import en `main.go`:
 
@@ -502,7 +514,7 @@ conjunto de resultados sin límite.
 | El container sale con 137 | OOMKilled. Subí `--memory` o reducí la asignación. |
 | El container sale con 139 | SIGSEGV — un crash real, no un límite. |
 | `gomaxprocs` sigue mal después de `automaxprocs` | El import tiene que ser en blanco (`_ "go.uber.org/automaxprocs"`) y en el paquete de `main`. Corré `go mod tidy`. |
-| `/train` vuelve al instante | `rounds` está topeado en 5.000.000 y por defecto es 200.000. Subilo si tu máquina es rápida. |
+| `/train` vuelve al instante | `rounds` está topeado en 50.000.000 y por defecto es 1.000.000. Si te pasás del tope vuelve en silencio al default, así que mirá `duration_ms`. Subilo si tu máquina es rápida. |
 
 ---
 

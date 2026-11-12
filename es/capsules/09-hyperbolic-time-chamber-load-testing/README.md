@@ -372,16 +372,42 @@ quiebre."*
 ### Paso 5 — variá los recursos, mirá moverse la rodilla
 
 ```bash
-for cpus in 0.5 1 2; do
+for cpus in 0.125 0.25 0.5; do
   docker rm -f hbtc 2>/dev/null
   docker run -d --rm -p 8080:8080 --name hbtc --cpus=$cpus --memory=512m scouter:latest
   sleep 2
   echo "=== cpus=$cpus ==="
-  k6 run --quiet scripts/load/stress.js 2>&1 | grep -E 'http_reqs|http_req_duration|http_req_failed'
+  k6 run --quiet scripts/load/stress.js 2>&1 | grep -E 'http_reqs|http_req_duration|http_req_failed|dropped_iterations|vus_max'
 done
 ```
 
-Ahora tenés un **modelo de capacidad**: RPS por vCPU. Ese único número te deja
+Son el límite del Paso 2 a la mitad y al doble. No `0.5 1 2`: con `--cpus=1` la
+rodilla ya queda más allá del techo de esta rampa (mirá el Paso 2), así que casi
+todo un barrido por ahí arriba se vería plano.
+
+Compará `dropped_iterations` y `vus_max` entre corridas, no `http_reqs`. A todas
+las corridas se les ofrece el mismo calendario de llegadas, así que la cantidad
+de requests casi no cambia mientras el servicio da abasto. Si no aparece la línea
+`dropped_iterations`, no se descartó nada. Esperá tres formas distintas:
+
+- **`0.125`**: bien pasada la rodilla. El p95 es órdenes de magnitud peor que en
+  las otras, se descarta una buena parte de las iteraciones y `vus_max` llega al
+  techo de 800.
+- **`0.25`**: tu corrida del Paso 2, en la rodilla o cerca, al final de la rampa.
+- **`0.5`**: plana. p95 bajo, casi nada descartado, `vus_max` queda cerca de sus
+  50 prealocados. La rodilla no desapareció. Se corrió más allá de 1600 rps, el
+  techo de la rampa. Una corrida plana es una cota inferior ("por lo menos 1600
+  rps"), no un número de capacidad.
+
+Duplicar la CPU corrió la rodilla más lejos de lo que esta rampa puede seguir, y
+ese es el resultado. Si en tu máquina las tres se ven planas, dividí los tres
+valores por dos; si las tres colapsan, duplicalos. Vale la misma regla que en el
+Paso 2: elegí la escala donde la rodilla cae dentro de la rampa.
+
+Ahora tenés un **modelo de capacidad**: RPS por vCPU. Sacalo de una corrida cuya
+rodilla caiga dentro de la rampa (el RPS logrado donde dejó de seguir al
+objetivo, dividido por `--cpus`), nunca de una corrida plana, que solo te dice
+que el techo está todavía más arriba. Ese único número te deja
 responder "¿cuántas instancias para 10.000 RPS?" sin correr otro test — y es
 exactamente lo que la Cápsula 26 te pide producir.
 
@@ -551,7 +577,7 @@ cd ~/repos/pato/gravity-chamber
 git add -A
 git commit -m "test(load): k6 smoke and open-model stress scenarios
 
-Capsule 09. Found the knee at N RPS on 1 vCPU; recorded RPS-per-vCPU as a
+Capsule 09. Found the knee at N RPS at --cpus=0.25; recorded RPS-per-vCPU as a
 capacity ratio. Confirmed a closed-model test cannot find the breaking point
 (coordinated omission). Smoke test has SLO thresholds so CI can gate on it."
 

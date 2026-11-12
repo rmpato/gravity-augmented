@@ -472,6 +472,12 @@ time (
 time curl -s localhost:9000/screens/fighter/goku | jq
 ```
 
+Esperá ver `"degraded": ["social"]` en esa salida, aunque tengas corriendo todo
+lo que construiste. El curso nunca construye un servicio social, así que no hay
+nada escuchando en `:8082` (el tercer `curl` de arriba falla igual de rápido), y
+el BFF lo trata exactamente como una caída. Es el camino de degradación
+funcionando antes de que el Paso 5 te lo pida.
+
 En localhost la diferencia es chica. Agregá latencia de red realista para ver el
 efecto real:
 
@@ -515,8 +521,11 @@ curl -s localhost:9000/screens/fighter/goku | jq
 }
 ```
 
-**La pantalla igual se renderiza.** Falta el ranking y el cliente sabe exactamente
-qué falta, así que puede esconder ese widget en vez de mostrar un valor incorrecto.
+**La pantalla igual se renderiza.** Matar ranking agregó `"ranking"` a la
+lista; `"social"` ya estaba desde el Paso 4, porque no hay servicio social. Los
+dos pueden salir en cualquier orden: cada goroutine que falla agrega su nombre
+cuando termina. Falta el ranking y el cliente sabe exactamente qué falta, así
+que puede esconder ese widget en vez de mostrar un valor incorrecto.
 
 Ahora matá el servicio de *readings*:
 

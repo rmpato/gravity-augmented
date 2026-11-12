@@ -44,7 +44,7 @@ that earlier capsules built, on purpose.
 
 ### The Filler Arc (optional)
 
-Seven extra capsules covering the fundamentals the main arc leans on. Every DBZ
+Ten extra capsules covering the fundamentals the main arc leans on. Every DBZ
 fan knows the filler episodes aren't required viewing — but the ones where
 somebody actually trains are worth it.
 

@@ -470,6 +470,12 @@ time (
 time curl -s localhost:9000/screens/fighter/goku | jq
 ```
 
+Expect `"degraded": ["social"]` in that output, even with everything you built
+running. The course never builds a social service, so nothing listens on
+`:8082` (the third `curl` above fails just as fast), and the BFF treats that
+exactly like an outage. That's the degradation path working before Step 5 asks
+for it.
+
 On localhost the difference is small. Add realistic network latency to see the
 real effect:
 
@@ -513,8 +519,11 @@ curl -s localhost:9000/screens/fighter/goku | jq
 }
 ```
 
-**The screen still renders.** The rank is missing and the client knows exactly
-what's missing, so it can hide that widget rather than showing a wrong value.
+**The screen still renders.** Killing ranking added `"ranking"` to the list;
+`"social"` was already there from Step 4, because there is no social service.
+The two may come out in either order: each failing goroutine appends when it
+finishes. The rank is missing and the client knows exactly what's missing, so
+it can hide that widget rather than showing a wrong value.
 
 Now kill the *readings* service:
 

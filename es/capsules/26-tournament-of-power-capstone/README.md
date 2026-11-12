@@ -471,5 +471,5 @@ cd ~/repos/pato/gravity-augmented && ./bin/scouter done 26
   The main arc is done. The Filler Arc takes you over.
 ```
 
-**El Arco de Relleno:** [`capsules/bonus/`](../bonus/) — siete cápsulas opcionales,
+**El Arco de Relleno:** [`capsules/bonus/`](../bonus/) — diez cápsulas opcionales,
 150 cada una, y la única forma de pasar los 9000.

@@ -328,16 +328,35 @@ echo "--- edge ---"
 for i in 1 2 3 4 5; do curl -s -o /dev/null -w "%{time_total}\n" localhost:8090/leaderboard; done
 ```
 
-En una laptop los dos son rápidos, así que **simulá la distancia real**:
+En una laptop los dos son rápidos, así que **simulá la distancia real**
+haciendo lento al origen. Agregá un retardo temporal al handler del leaderboard
+(importá `time` si el archivo todavía no lo importa), recompilá y reiniciá el
+origen:
 
-```bash
-# add 150ms to the origin, as if it were on another continent
-docker exec edge sh -c "apk add --no-cache iproute2 >/dev/null 2>&1 || true"
+```go
+// top of the leaderboard handler — TEMPORARY, delete after this step
+time.Sleep(150 * time.Millisecond) // the origin is "on another continent"
 ```
 
-O más simple — agregá un retardo artificial al handler del origen temporalmente
-(`time.Sleep(150 * time.Millisecond)`) y volvé a medir. **El MISS lo paga. El HIT
-no.** Ese hueco es el producto entero.
+Después vaciá el cache del edge, o la entrada vieja se sirve como `STALE`
+mientras se refresca en segundo plano y nunca llegás a ver un MISS lento:
+
+```bash
+docker stop edge    # it was started with --rm, so its cache goes with it
+```
+
+Levantalo de nuevo con el mismo `docker run` de arriba y volvé a correr los dos
+loops. El origen ahora tarda ~150 ms cada vez. A través del edge, el primer
+request (el MISS) paga los 150 ms y los HIT que siguen vuelven en un milisegundo
+o dos. **El MISS lo paga. El HIT no.** Ese hueco es el producto entero. Sacá el
+sleep antes de seguir.
+
+> ¿Por qué no retrasar la red, con `tc qdisc … netem` adentro del contenedor del
+> edge? Porque eso retrasa *cada* paquete que sale del edge, incluido el HIT que
+> vuelve a tu `curl` — un HIT costaría lo mismo que un MISS, que es justo lo
+> contrario de lo que querés ver. Para simular distancia con `netem` tendrías
+> que filtrar por destino. El sleep pone el retardo exactamente donde está la
+> distancia real: entre el edge y el origen.
 
 ### Paso 4 — protección del origen bajo falla
 

@@ -174,8 +174,10 @@ features.
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -235,6 +237,11 @@ func New(cfg Config, log *slog.Logger) (*Gateway, error) {
 		p.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
 			log.Error("upstream failure",
 				"target", target.String(), "path", req.URL.Path, "err", err)
+			if errors.Is(err, context.DeadlineExceeded) {
+				// 504, not 502: the backend is up, it just blew the budget.
+				http.Error(w, `{"error":"upstream timed out"}`, http.StatusGatewayTimeout)
+				return
+			}
 			http.Error(w, `{"error":"upstream unavailable"}`, http.StatusBadGateway)
 		}
 
@@ -311,6 +318,14 @@ func (g *Gateway) route(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "" {
 			r.URL.Path = "/"
 		}
+	}
+
+	// Without a deadline, a hung backend holds this request (and its
+	// goroutine and connection) until the client gives up.
+	if g.cfg.UpstreamWait > 0 {
+		ctx, cancel := context.WithTimeout(r.Context(), g.cfg.UpstreamWait)
+		defer cancel()
+		r = r.WithContext(ctx)
 	}
 	proxy.ServeHTTP(w, r)
 }
@@ -728,6 +743,7 @@ Capsule 17 implements a token bucket properly.
 | Symptom | Fix |
 |---|---|
 | Gateway returns 502 for everything | `SCOUTER_URL` is wrong, or the backend isn't running. Check the `upstream failure` log line — it names the target. |
+| Slow requests come back `504` after exactly 10 s | That's `UpstreamWait` doing its job: the log says `context deadline exceeded`. Make the backend faster, or raise the budget for that route, but keep it under the server's `WriteTimeout` (30 s) or the client gets a dropped connection instead of a 504. |
 | Backend sees the original path with the prefix | `Strip: true` must be set on the route, and route matching is longest-prefix. |
 | `X-Request-Id` missing on the response | The middleware must set it on `w.Header()` *before* the handler writes anything. Headers can't be set after the body starts. |
 | Rate limiter never triggers | It keys on `X-Caller`, which is only set for non-public routes. `/healthz` is public and unlimited by design. |

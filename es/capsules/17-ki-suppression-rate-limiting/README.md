@@ -89,14 +89,15 @@ Dejá de llamar a una dependencia que está claramente rota.
       │                                  │ after a cooldown
       │   success                        ▼
       └──────────────────────── HALF-OPEN
-                                (let a few through and see)
+                                (one probe at a time)
 ```
 
 - **Cerrado** — normal; contás fallas.
 - **Abierto** — fallás de inmediato sin llamar. Devolvés un fallback. Este es el
   punto: dejás de pagar el timeout en cada request.
-- **Semi-abierto** — después de un enfriamiento, dejás pasar un hilito. Un éxito lo
-  cierra; una falla lo vuelve a abrir.
+- **Semi-abierto** — después de un enfriamiento, dejás pasar una sola prueba a la
+  vez mientras todos los demás siguen fallando rápido. Unos pocos éxitos seguidos
+  lo cierran; una falla lo vuelve a abrir.
 
 El valor no es proteger a la dependencia (aunque ayuda). Es protegerte **a vos**:
 un breaker abierto significa que dejás de retener miles de goroutines esperando algo
@@ -366,6 +367,7 @@ type Breaker struct {
 	failures     int
 	successes    int
 	openedAt     time.Time
+	probing      bool // half-open: a probe call is in flight
 
 	threshold    int           // consecutive failures that trip it
 	cooldown     time.Duration // how long to stay open
@@ -396,12 +398,18 @@ func (b *Breaker) allow() bool {
 
 	switch b.state {
 	case open:
-		if time.Since(b.openedAt) > b.cooldown {
-			b.state = halfOpen
-			b.successes = 0
-			return true // let one through to probe
+		if time.Since(b.openedAt) < b.cooldown {
+			return false
 		}
-		return false
+		b.state = halfOpen
+		b.successes = 0
+		fallthrough
+	case halfOpen:
+		if b.probing {
+			return false // one probe at a time; everyone else still fails fast
+		}
+		b.probing = true
+		return true // let one through to probe
 	default:
 		return true
 	}
@@ -410,6 +418,7 @@ func (b *Breaker) allow() bool {
 func (b *Breaker) record(ok bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.probing = false // the probe, if this was one, is over
 
 	if ok {
 		switch b.state {
@@ -483,6 +492,25 @@ func TestBreakerOpensAndRecovers(t *testing.T) {
 		t.Errorf("state = %s, want closed", b.State())
 	}
 }
+
+func TestBreakerHalfOpenAdmitsOneProbe(t *testing.T) {
+	b := NewBreaker(1, 10*time.Millisecond)
+	b.Do(func() error { return errors.New("boom") }) // trip it
+	time.Sleep(20 * time.Millisecond)                // cooldown
+
+	release := make(chan struct{})
+	started := make(chan struct{})
+	go b.Do(func() error { close(started); <-release; return nil }) // the probe, held open
+	<-started
+
+	// While the probe is in flight, everyone else must still be refused.
+	called := false
+	err := b.Do(func() error { called = true; return nil })
+	close(release)
+	if called || !errors.Is(err, ErrCircuitOpen) {
+		t.Fatalf("call during half-open: called=%v err=%v, want ErrCircuitOpen", called, err)
+	}
+}
 ```
 
 ```bash
@@ -504,11 +532,13 @@ type CachedStore struct {
 // either duplicate the network call or throw away your hot-key cache.
 func (c *CachedStore) latestFromRedisOrDB(fighter string) (Reading, bool) {
 	var raw []byte
+	var miss bool
 	err := c.breaker.Do(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 		b, err := c.rdb.Get(ctx, fighterKey(fighter)).Bytes()
 		if errors.Is(err, redis.Nil) {
+			miss = true
 			return nil // a miss is not a failure — don't trip the breaker on it
 		}
 		raw = b
@@ -743,26 +773,40 @@ resultado que vale la pena internalizar.
 
 ### Paso 6 — simulá una cascada, después frenala
 
-```bash
-# make Postgres artificially slow
-docker compose exec -T postgres psql -U scouter -d scouter -c \
-  "ALTER SYSTEM SET default_transaction_isolation='serializable'; SELECT pg_reload_conf();"
-```
-
-O simplemente pausá el container:
+Hacé que la base de datos deje de contestar — no caída, solo muda, que es el peor
+caso del principio de esta cápsula:
 
 ```bash
 docker compose pause postgres
 k6 run --vus 100 --duration 20s scripts/load/stress.js
 ```
 
-Sin breaker: cada request espera el timeout completo de la query, las goroutines se
-apilan, la memoria crece, los health checks empiezan a fallar, y el load balancer
-saca tus instancias (sanas).
+Sin ninguna de las protecciones de esta cápsula, cada request esperaría lo que
+la base quisiera, las goroutines se apilarían, la memoria crecería, y en algún
+momento los health checks fallan y el load balancer saca tus instancias (sanas).
 
-Con breaker + shedder: los requests fallan en ~0 ms con un error claro, la memoria
-se mantiene plana, los health checks siguen pasando, y te recuperás en el instante
-en que vuelve la base de datos.
+Esto es lo que pasa de verdad. Medido con el código de esta cápsula, 100 VUs
+desde una sola máquina, Postgres pausado:
+
+- **Las escrituras** esperan cada una el timeout de 3 segundos de la llamada a la
+  base, y después se rinden.
+- **Las lecturas del leaderboard** que Redis puede responder siguen en pocos
+  milisegundos. Las que no están en cache van a Postgres y esperan su timeout
+  (hasta 5 s).
+- **`/healthz` sigue en pocos milisegundos** — el liveness nunca toca la base
+  (Cápsula 01).
+- **La mayoría de los requests de k6 reciben un `429` en ~2 ms** del rate limiter
+  del Paso 1, porque vienen todos de la misma IP. Ese mismo límite es lo que
+  mantiene la cantidad de requests en vuelo por debajo del tope del shedder en
+  esta corrida.
+
+Fijate lo que *no* pasó: nada falló en ~0 ms porque se abriera un breaker. **Tu
+breaker envuelve a Redis, no a Postgres**, así que una base muda se sigue pagando
+en timeouts. Lo que te salvó es que el costo está *acotado* — por los deadlines
+del Paso 2, por el limiter, y por el shedder si pasa más tráfico — en vez de
+apilarse sin límite. Si querés que las llamadas a la base también fallen rápido,
+dales su propio `Breaker`: el mismo tipo, una segunda instancia. Y cuando
+despausás, todo se recupera en el siguiente request, porque nada quedó trabado.
 
 ```bash
 docker compose unpause postgres
@@ -933,7 +977,7 @@ conservá los requests interactivos de usuarios. Y nunca descartes los health ch
 |---|---|
 | El rate limiter bloquea a todos | La función de clave devuelve una constante. Logueá la clave mientras debuggeás. |
 | El límite es N× más alto de lo configurado | Limitación por réplica con N réplicas. Usá Redis, o dividí el límite. |
-| El breaker nunca abre | ¿Estás contando misses o 404 como fallas? No — al revés: contá solo fallas *reales*, y verificá que `record(false)` realmente se alcance. |
+| El breaker nunca abre | Las fallas reales no llegan a `record(false)`. Revisá que la closure devuelva el error (solo `redis.Nil` debería volverse `nil`) y que la llamada pase de verdad por `breaker.Do`. Acordate de que el umbral cuenta fallas *consecutivas* — un éxito en el medio lo resetea. (Contar misses o 404 como fallas es el bug opuesto: el breaker abre cuando no pasa nada.) |
 | El breaker nunca cierra | Los `halfOpenNeed` éxitos nunca se acumulan porque los sondeos siguen fallando — la dependencia realmente sigue caída. |
 | Los reintentos tardan una eternidad | Sin tope de `MaxDelay`, el backoff exponencial llega a minutos. Topealo. |
 | La memoria crece con el limitador | Map por clave sin limpieza. Para eso está `reap()`. |

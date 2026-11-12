@@ -711,3 +711,282 @@ cause was the app's `scroll-behavior: smooth`, which animates via
 `requestAnimationFrame` — throttled in a tab that isn't foregrounded. Forcing
 `{behavior: "instant"}` scrolled exactly as intended. The fix was right and the
 measurement was lying; worth remembering before "fixing" a working scroll.
+
+---
+
+## Fixes from writing the arc recap (2026-11-11)
+
+Writing a one-page recap for every capsule (`site/recap/`) meant reading each
+README against itself end to end. That turned up contradictions and missing
+pieces, and every one was reproduced before it was fixed, and executed after.
+The parallel runs shared one machine, so load-test numbers are shape-only (see
+09). Reference-repo follow-ups are listed at the end.
+
+### MEDIUM — Capsule 03: three Part 2 plan comments did not match what Terraform prints
+
+"A safe in-place change" (`replica_count=3`) promised "1 to change" and a `~`.
+Terraform 1.15 with local 2.9 prints `local_file.manifest must be replaced`,
+`-/+`, `# forces replacement` on `content`, and "1 to add, 0 to change, 1 to
+destroy". `local_file` cannot edit a file, so every content change is a
+replacement. The first plan is "2 to add", not 3 (there are two resources). The
+prod plan is "2 to add, 2 to destroy", and the drift step prints "will be
+created". `terraform fmt` also rewrote the file because of an extra alignment
+space in the provider block.
+
+**Why it was invisible.** Every comment matched what Terraform usually does on
+cloud resources. Nobody had run this `main.tf` against these two providers.
+
+**Fix.** The code is kept, because a learner on `main` has probably already
+written this `main.tf`. The prose now teaches what actually happens: the
+provider decides `~` versus `-/+` per attribute, so read the
+`# forces replacement` line. Verified by extracting `main.tf` from the README
+and running the whole lifecycle before and after. The reference's `capsule-03`
+has the same `fmt` space.
+
+### Minor — Capsule 05: Senzu `/train` numbers predated the recalibration
+
+The table said the cap was 5,000,000 and the default 200,000. The code in the
+same capsule (and in reference `capsule-05`) says 50,000,000 and 1,000,000. The
+handler had been fixed and the table hadn't. The row now also mentions the
+silent fallback to the default when you go over the cap.
+
+### HIGH — Capsule 05 Step 4: the GOMAXPROCS trap curled nothing, and could hide the trap
+
+`docker run --rm --cpus=1 scouter:latest &` published no port. Step 3 stops its
+container, so the curl got connection refused (exit 7). It now runs detached
+with `-p 8080:8080 --name trap` and cleans up before Step 5.
+
+Running it showed a second problem. A module whose `go.mod` says `go 1.25` or
+later, built with the course's `golang:1.25-alpine`, reports `gomaxprocs: 2`
+under `--cpus=1`: the 1.25 runtime is cgroup-aware and never goes below 2. With
+`go 1.23` it reports 8 of 8, and `GODEBUG=containermaxprocs=0` brings the trap
+back. The capsule now says this. The concept note's "the 1.23 in these
+capsules" had gone stale when Capsule 02 moved to 1.25.
+
+**Why it was invisible.** The `&` looks like it starts a server. Whether the
+trap appears depends on the learner's `go.mod`, not on the Dockerfile.
+Verified with both images: the trap shows p50 1.59 s against 0.80 s with the
+fix.
+
+### HIGH — Capsule 08: `UpstreamWait` was configured and never used
+
+The `Config` field was set to 10 s in `main.go` and never read. A hung backend
+held each gateway request until the server's 30 s `WriteTimeout` dropped the
+connection; against a 15 s upstream the gateway returned `200 in 15.0s`.
+`route()` now wraps the request in `context.WithTimeout`, and `ErrorHandler`
+maps `DeadlineExceeded` to 504 (other errors stay 502). After the fix: a 1 s
+upstream gives 200, 15 s gives `504 in 10.0s`, and a dead backend gives 502.
+
+**Why it was invisible.** The field is named, commented and set, and `go vet`
+doesn't flag unused struct fields. The reference has the same defect in every
+tag from `capsule-08` to `capsule-26`.
+
+### MEDIUM — Capsule 07: the honest least_conn finding was contradicted elsewhere in the capsule
+
+The earlier fix (above: "Capsule 07 Step 2/3: the least_conn comparison does
+not reproduce") rewrote Step 3 but left the old promise around it. Step 2 still
+said "some fast requests took far longer than they should have", and then Step
+3 explained why Go keeps `/healthz` at ~2 ms. The Senzu row blamed "no visible
+difference" on uniform request cost, which is the opposite of Step 3's reasons.
+The commit message had the learner write "difference shows only in the tail".
+The Step 1 heading ("see the algorithms differ") and the Step 2 `rounds` note
+("slow enough to *watch* the imbalance") made the same promise.
+
+**Why it was invisible.** Each sentence is fine on its own. The contradiction
+only shows when you read Step 2 against Step 3, and the earlier fix was scoped
+to Step 3.
+
+**Fix.** Step 2 now asks for a baseline without predicting it. The `rounds`
+note gives the real reason 3M rounds fails: it finishes during the `sleep 1`
+(303 ms measured). The Senzu row says "expected, see Step 3" and keeps the
+check for the silent fall back to the default. The commit message says "no
+difference above run-to-run noise at this scale".
+
+Verified on the `capsule-07` tag with the compose file as written (no CPU
+limit), 3 runs per case, worst of 20 fast `/healthz` requests. With 6 slow
+30M-round requests: round robin 3.9–5.3 ms, `least_conn` 3.7–4.2 ms. With 4
+slow: round robin 1.6–1.7 ms, `least_conn` 1.56–1.75 ms. The machine was
+shared and contended; the no-difference conclusion survives that.
+
+**Still open.** Step 3's table says it was measured at `cpus: 0.5`, but nothing
+in the learner's compose sets that limit, so learners will see single-digit ms
+rather than 60–122 ms.
+
+### MEDIUM — Capsule 09 Step 5: the cpus sweep straddled a knee the capsule says isn't there
+
+The earlier fix moved Step 2 to `--cpus=0.25` because `--cpus=1` has no knee.
+But Step 5 still looped over `0.5 1 2` to "watch the knee move", and the commit
+message said "found the knee at N RPS on 1 vCPU". Measured: 0.5 is already flat
+(p95 1–3 ms, 0–4 dropped, ≤4 VUs) and 1 is flatter, so the learner would watch
+nothing move.
+
+**Why it was invisible.** Step 5 was never re-run after Step 2's limit changed;
+the two steps were edited separately.
+
+**Fix.** The loop is now `0.125 0.25 0.5`, and it greps `dropped_iterations`
+and `vus_max` too. The prose describes the three shapes, says a flat run is a
+lower bound and not a capacity number, says to take RPS per vCPU only from a
+run whose knee lands inside the ramp, and to halve or double all three values
+if every run looks the same. The commit message now says `--cpus=0.25`.
+
+Verified twice on the `capsule-09` tag with `grafana/k6` via docker. At 0.125:
+p95 3.5 s and 5.2 s, 30–36k iterations dropped, VUs at the 800 cap. At 0.25:
+p95 179 and 254 ms, 1.2–1.4k dropped. At 0.5: p95 3.5 and 1.2 ms, 4 and 0
+dropped. Taken under contention from parallel work (load average ~3–4 on 8
+cores), so only the shape is claimed. Absolute values need a re-run on a quiet
+machine; the 0.25 p95 is worse than this log's earlier 30–68 ms.
+
+### MEDIUM — Capsule 11 quoted 200k-row numbers on a 2M-row table
+
+Step 1 loads 2,000,000 readings, but Step 3's prose and table were measured on
+an earlier 200k-row table (7.6 ms → 0.094 ms, 16 and 90 buffers). Step 2
+promised 100–400 ms, and the commit message said ~200 ms. Re-run on Postgres 16
+with Step 1 verbatim: no index is a `Parallel Seq Scan` under `Gather Merge`,
+`shared hit=14780`, ~29 ms; right index 13 buffers, 0.040 ms (~700×); wrong
+index 83 buffers, 0.148 ms. Step 2 also told the learner to look for
+`shared read=`, but right after the load every buffer is a `hit`.
+
+Step 4 said `power > 1000` returns "~90%", and that a seq scan beats "1.8
+million random page fetches". With power uniform over 0–10M it is 99.99%
+(1,999,801 rows), and the forced plan does no random heap fetches. Once
+autovacuum has run it is an `Index Only Scan` (76 ms against 68 ms for the seq
+scan); before that it is a `Bitmap Heap Scan` (180 ms against 72 ms).
+
+**Why it was invisible.** Each number was plausible on its own. Nothing looked
+wrong until the lab was run at the size it actually loads. Corrected in both
+languages and in the commit message. The reference's `capsule-11` commit
+message has the same "~200ms".
+
+### LOW — Capsule 15's commit message contradicted its own test
+
+The "Log it" message said "~65% for modulo"; the prose and the test say ~75%.
+The reference's `capsule-15` ring tests print 25.8% vs 74.9%. Fixed in both
+languages.
+
+### MEDIUM — Capsule 16's "simulate distance" command added no delay, and the obvious completion teaches the wrong lesson
+
+Step 3 offered `apk add --no-cache iproute2` inside the edge as a way to add
+150 ms. It only installs a package; `tc qdisc show` still lists `noqueue`.
+Completing it with `--cap-add NET_ADMIN` and `tc qdisc add dev eth0 root netem
+delay 150ms` does work, but it delays every packet leaving the edge, including
+the HIT on its way back to curl. Measured: MISS 0.62 s, HITs ~0.30 s, the
+opposite of "the MISS pays, the HIT doesn't". The `tc` route is removed and the
+`time.Sleep` route is now the step, with the reason in a callout.
+
+Running the sleep route found a second trap. If the edge already holds the
+entry, it serves it `STALE` while refreshing in the background
+(`proxy_cache_background_update` plus `use_stale updating`), so the slow MISS
+never appears. The step now says to `docker stop edge` first. Verified: origin
+~155 ms on every request; edge MISS 156 ms, then HITs at 1.2–1.6 ms.
+
+### HIGH — Capsule 17's half-open breaker admitted everyone
+
+`allow()` moved open → halfOpen and returned true, but halfOpen then fell into
+`default: return true`, so every caller after the cooldown hit the dependency.
+The comment said "let one through to probe" and the prose said "a trickle".
+
+**Why it was invisible.** The sequential recovery test passes either way.
+
+**Fix.** A `probing` flag allows one probe in flight; everyone else gets
+`ErrCircuitOpen`. `TestBreakerHalfOpenAdmitsOneProbe` fails on the old code
+(`called=true`) and passes on the new one under `-race -count=20`. The
+reference's `capsule-17` has the same bug.
+
+In the same capsule, the `latestFromRedisOrDB` fragment assigned `miss` without
+declaring it (`undefined: miss`); only the warning callout declared it. It is
+now declared and set on `redis.Nil`, and compiles inside the reference's
+`capsule-17` `cached.go`.
+
+### MEDIUM — Capsule 17 Step 6 promised a breaker the lab doesn't have
+
+Step 6 claimed "with breaker + shedder: requests fail in ~0 ms" with Postgres
+paused, but the breaker wraps Redis only. Its `ALTER SYSTEM SET
+default_transaction_isolation='serializable'; SELECT pg_reload_conf();` errors
+("cannot run inside a transaction block"), and when applied properly it slows
+nothing: k6 latencies matched the baseline.
+
+What actually happens with Postgres paused and 100 VUs: writes wait the 3 s
+timeout; leaderboard reads served by Redis stay at ~9 ms p50 (5 s p99 when they
+fall through); `/healthz` stays at ~2.6 ms; and 99.7% of requests get a 429 in
+~2 ms from Step 1's per-IP limiter, because k6 runs from a single IP. There
+were no 503s, so the shedder never engaged. The step now says what really
+happens: bounded cost rather than fast failure, and a second `Breaker` for the
+database if you want that too. The confusing "Breaker never opens" Senzu row
+was rewritten.
+
+**Found, not fixed.** In the reference's `capsule-17`, `POST /readings`
+returns 201 even after the write times out, because `Store.Record` has no
+error return. `/readyz` returned 200 while Postgres was paused; not
+investigated.
+
+### HIGH — Capsule 19: the dead-letter path acked before it copied, and discarded the copy's error
+
+The Step 4 callback did `m.Ack()` and then `_ = dlq.Publish(ctx, m)`. If the
+DLQ publish failed, the original was already acked and the copy never existed:
+the message was gone, and the logs only said "dead-lettering".
+
+**Why it was invisible.** When the DLQ topic exists, the happy path works
+perfectly; the bug only shows when the publish fails. In the emulator, with the
+DLQ topic missing, the original code left 0 messages on `ranker`, none
+anywhere else, and no error in the logs.
+
+**Fix.** Publish, `res.Get(ctx)`, ack on success, nack on failure, and carry
+the error in an attribute. With the fix the message lands in `dlq-inspector`
+with `attributes.error`; with no DLQ topic it is nacked and kept (`NotFound` is
+logged). The extracted block compiles against pubsub v1.51.0.
+
+### Minor — Capsule 19: `total_power` stopped being a total, and Step 1's event couldn't drive the version check
+
+`HandleVersioned` sets `total_power = EXCLUDED.total_power`. That is correct,
+because version checks are for set-to-state updates (drill 5), but the column
+name says otherwise: against Postgres a real event leaves `total_power=12000
+reading_count=1`. Separately, the hand-written Step 1 event has no
+`recorded_at`. Go decodes the zero time, `UnixNano()` returns
+`-6795364578871345152`, and against Step 2's row (`last_version=0`) the update
+silently matches nothing and returns a nil error. Its `"version":1` is the
+schema version, not the one being checked, which makes the trap easier to fall
+into.
+
+**Why it was invisible.** The step's only test is a pure comparison table.
+Fixed with two prose paragraphs; no code change. The `recorded_at` workaround
+they give was run and applies.
+
+### HIGH — Capsule 20: `FlushBatch` copied into a table nothing creates
+
+`reading_events` appears only in `FlushBatch`: in no other capsule and in no
+reference tag. Every flush fails with `relation "reading_events" does not exist
+(SQLSTATE 42P01)`. The DDL is now in the capsule, deliberately without a
+primary key: with one, a batch containing a single already-copied event fails
+with 23505 and loses the whole batch. Verified with 5000 events through the
+capsule's `Batcher` in batches of 500: all 5000 rows landed.
+
+### Minor — Capsule 20: the code didn't use the `ZADD GT` its comment promised
+
+The comment and "Bring it to work" both rely on `ZADD GT`, but the code called
+plain `ZAdd`, so a lower or older score overwrote a higher one. Against Redis,
+applying 9001, 150 and 8000 in turn ended at 8000. Switched to `ZAddGT`
+(go-redis v9.22.0). With the fix, 9001 then 150 stays 9001, and 12000 then 8000
+stays 12000.
+
+### Minor — Capsule 23: `social` is always degraded, and the prose didn't say so
+
+The course never builds a social service, so `SOCIAL_URL`'s default `:8082` is
+refused on every request. Verified with the reference BFF: `["social"]` with
+everything running; both names with ranking killed, in either order because
+goroutines append as they finish; 503 with readings killed. The Step 5 sample
+JSON was right, but the prose described only ranking failing. Steps 4 and 5 now
+say what the learner will see. The earlier "verified" line (`ranking down →
+["ranking"]`) must have used a social stub.
+
+### Minor — stale bonus-capsule count
+
+`README.md`, `es/README.md` and Capsule 26 (EN and ES) said seven bonus
+capsules; there are ten. A grep for other stale counts and derived totals
+found nothing else.
+
+### Reference repo follow-ups (not done)
+
+- `capsule-08`…`capsule-26`: `UpstreamWait` is unused, the same defect as Capsule 08.
+- `capsule-17`: the half-open breaker admits everyone; `POST /readings` returns 201 after a write times out.
+- Commit messages of `capsule-07`, `capsule-09` and `capsule-11` still carry the old claims (fixing them means rewriting tags, Runbook 6).
+- There are no `capsule-19`, `-20`, `-23` or `-24` tags: 19–21 are batched into `capsule-21`, and 23–25 into `capsule-25`. CLAUDE.md says every capsule has one.

@@ -252,6 +252,22 @@ func (r *Ranker) FlushBatch(ctx context.Context, events []PowerRecorded) error {
 }
 ```
 
+Ninguna cápsula anterior crea la tabla a la que copia. Creala en `psql` antes
+de correr el consumidor, o cada flush falla con
+`relation "reading_events" does not exist`:
+
+```sql
+-- The append-only landing table FlushBatch copies into. No primary key on
+-- purpose: COPY cannot skip conflicts, so one redelivered event would fail
+-- the whole batch. Dedupe downstream, or merge through a temp table.
+CREATE TABLE reading_events (
+    event_id    UUID        NOT NULL,
+    fighter     TEXT        NOT NULL,
+    power       BIGINT      NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL
+);
+```
+
 Medilo — este es el número que convence a la gente:
 
 ```bash
@@ -339,7 +355,7 @@ func (r *Ranker) HandleFanoutOnWrite(ctx context.Context, e PowerRecorded) error
 	// ZADD with GT: only update if the new score is GREATER.
 	// This makes it idempotent AND order-independent for a "highest power"
 	// leaderboard — Capsule 19's version check, expressed as a Redis flag.
-	return r.rdb.ZAdd(ctx, "leaderboard:live", redis.Z{
+	return r.rdb.ZAddGT(ctx, "leaderboard:live", redis.Z{
 		Score:  float64(e.Power),
 		Member: e.Fighter,
 	}).Err()
